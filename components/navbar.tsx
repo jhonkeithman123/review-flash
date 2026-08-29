@@ -18,7 +18,6 @@ import {
   BrainCircuit,
   Check,
   Copy,
-  ExternalLink,
   FolderKanban,
   House,
   LogIn,
@@ -32,7 +31,6 @@ import {
 import {
   getRedirectResult,
   onAuthStateChanged,
-  signInWithPopup,
   signInWithRedirect,
   signOut,
   User,
@@ -64,7 +62,7 @@ export function Navbar() {
       return;
     }
 
-    // Handle return from redirect sign-in (e.g. mobile Safari / Chrome or when popup is blocked)
+    // Process redirect result when returning from Google OAuth redirect
     getRedirectResult(auth)
       .then((result) => {
         if (result?.user) {
@@ -81,7 +79,7 @@ export function Navbar() {
         if (error?.code === "auth/unauthorized-domain") {
           setAuthError({
             title: "Domain Not Authorized in Firebase",
-            message: `Please add "${window.location.hostname}" to Firebase Console -> Authentication -> Settings -> Authorized Domains.`,
+            message: `Please verify that "${window.location.hostname}" is listed under Firebase Console -> Authentication -> Settings -> Authorized Domains.`,
             code: error.code,
           });
         }
@@ -118,42 +116,18 @@ export function Navbar() {
     setAuthError(null);
 
     try {
-      const result = await signInWithPopup(auth, googleProvider);
-      setUser(result.user);
-      setCurrentUserId(result.user.uid);
-      if (result.user.email) setCurrentUserEmail(result.user.email);
-      if (result.user.displayName) setCurrentUserName(result.user.displayName);
-      setMobileMenuOpen(false);
-      setAuthError(null);
+      // 100% reliable redirect login: completely immune to browser popup blockers
+      await signInWithRedirect(auth, googleProvider);
     } catch (error: unknown) {
       const authErr = error as { code?: string; message?: string };
       console.error("🔥 [Firebase Google Sign-In Error]:", authErr);
+      setIsSigningIn(false);
 
       if (authErr?.code === "auth/unauthorized-domain") {
         const hostname = typeof window !== "undefined" ? window.location.hostname : "your domain";
         setAuthError({
           title: "Domain Not Authorized in Firebase Console",
-          message: `Firebase blocked sign-in from "${hostname}". To fix: Go to Firebase Console ➔ Authentication ➔ Settings ➔ Authorized domains ➔ Add "${hostname}".`,
-          code: authErr.code,
-        });
-      } else if (
-        authErr?.code === "auth/popup-blocked" ||
-        authErr?.code === "auth/cancelled-popup-request"
-      ) {
-        setAuthError({
-          title: "Popup Blocked by Browser",
-          message: "Your browser prevented the popup. Attempting full page Google sign-in redirect...",
-          code: authErr.code,
-        });
-        try {
-          await signInWithRedirect(auth, googleProvider);
-        } catch (redirectError) {
-          console.error("Redirect sign-in failed:", redirectError);
-        }
-      } else if (authErr?.code === "auth/popup-closed-by-user") {
-        setAuthError({
-          title: "Sign-In Window Closed",
-          message: "The Google account chooser was closed before completing. If you picked an account and it closed, check your Firebase Authorized Domains or third-party cookies.",
+          message: `Firebase blocked sign-in from "${hostname}". Add "${hostname}" to Firebase Console ➔ Authentication ➔ Settings ➔ Authorized domains.`,
           code: authErr.code,
         });
       } else {
@@ -163,18 +137,6 @@ export function Navbar() {
           code: authErr?.code,
         });
       }
-    } finally {
-      setIsSigningIn(false);
-    }
-  };
-
-  const handleForceRedirectSignIn = async () => {
-    if (!auth) return;
-    setIsSigningIn(true);
-    try {
-      await signInWithRedirect(auth, googleProvider);
-    } catch (e) {
-      console.error("Redirect sign-in failed:", e);
     }
   };
 
@@ -294,7 +256,7 @@ export function Navbar() {
                     ) : (
                       <LogIn size={14} />
                     )}
-                    <span>{isSigningIn ? "Signing in…" : "Sign in"}</span>
+                    <span>{isSigningIn ? "Redirecting…" : "Sign in"}</span>
                   </button>
                 </div>
               )
@@ -327,7 +289,7 @@ export function Navbar() {
                   ) : (
                     <LogIn size={13} />
                   )}
-                  <span>{isSigningIn ? "Signing in…" : "Sign in"}</span>
+                  <span>{isSigningIn ? "Redirecting…" : "Sign in"}</span>
                 </button>
               )
             ) : null}
@@ -416,7 +378,7 @@ export function Navbar() {
                       ) : (
                         <LogIn size={15} />
                       )}
-                      <span>{isSigningIn ? "Signing in with Google…" : "Sign in with Google"}</span>
+                      <span>{isSigningIn ? "Redirecting to Google…" : "Sign in with Google"}</span>
                     </button>
                   </div>
                 )
@@ -467,18 +429,6 @@ export function Navbar() {
               <div className="space-y-1">
                 <p className="font-bold text-amber-300">{authError.title}</p>
                 <p className="text-amber-200/90 leading-relaxed">{authError.message}</p>
-                {authError.code === "auth/popup-closed-by-user" && (
-                  <div className="pt-1 flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={handleForceRedirectSignIn}
-                      className="inline-flex items-center gap-1 font-semibold text-cyan-300 bg-cyan-950/80 border border-cyan-500/40 px-2.5 py-1 rounded-lg hover:bg-cyan-900/80 transition cursor-pointer"
-                    >
-                      <ExternalLink size={12} />
-                      Try Full-Page Google Sign-In
-                    </button>
-                  </div>
-                )}
               </div>
             </div>
             <button

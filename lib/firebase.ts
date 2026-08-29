@@ -8,16 +8,9 @@ import {
 } from "firebase/auth";
 import { getFirestore, Firestore } from "firebase/firestore";
 
-const getRuntimeAuthDomain = () => {
-  if (typeof window !== "undefined" && (window.location.hostname.endsWith(".vercel.app") || window.location.hostname.includes("vercel.app"))) {
-    return window.location.host;
-  }
-  return process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN || "review-flash.firebaseapp.com";
-};
-
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
-  authDomain: getRuntimeAuthDomain(),
+  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN || "review-flash.firebaseapp.com",
   projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || "review-flash",
   storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
   messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
