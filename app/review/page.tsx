@@ -1,14 +1,21 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
+import Link from "next/link";
+import { BookOpen, Plus, RotateCcw, Share2, Shuffle, Sparkles } from "lucide-react";
 import { FlashcardCard } from "@/components/flashcard-card";
 import { ProgressStats } from "@/components/progress-stats";
+import { DeckSelector } from "@/components/deck-selector";
+import { ShareDeckModal } from "@/components/share-deck-modal";
 import {
+  fetchDecks,
   fetchFlashcards,
   fetchUserStats,
   recordReviewResult,
+  shuffleArray,
 } from "@/lib/flashcardService";
-import { Flashcard, UserStats } from "@/types/flashcard";
+import { Deck, Flashcard, UserStats } from "@/types/flashcard";
 
 const initialStats: UserStats = {
   reviewed: 0,
@@ -18,19 +25,30 @@ const initialStats: UserStats = {
   streakDays: 1,
 };
 
-export default function ReviewPage() {
-  const [cards, setCards] = useState<Flashcard[]>([]);
+function ReviewContent() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const initialDeckParam = searchParams.get("deckId") || "all";
+
+  const [decks, setDecks] = useState<Deck[]>([]);
+  const [selectedDeckId, setSelectedDeckId] = useState<string>(initialDeckParam);
+  const [allCards, setAllCards] = useState<Flashcard[]>([]);
+  const [activeCards, setActiveCards] = useState<Flashcard[]>([]);
+  const [isShuffleActive, setIsShuffleActive] = useState(false);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [stats, setStats] = useState<UserStats>(initialStats);
   const [loading, setLoading] = useState(true);
+  const [isShareModalOpen, setIsShareModalOpen] = useState(false);
 
   const loadData = useCallback(async () => {
     setLoading(true);
-    const [flashcards, userStats] = await Promise.all([
+    const [deckList, flashcards, userStats] = await Promise.all([
+      fetchDecks(),
       fetchFlashcards(),
       fetchUserStats(),
     ]);
-    setCards(flashcards);
+    setDecks(deckList);
+    setAllCards(flashcards);
     setStats(userStats);
     setLoading(false);
   }, []);
@@ -39,12 +57,68 @@ export default function ReviewPage() {
     loadData();
   }, [loadData]);
 
-  const currentCard = cards[currentIndex];
+  // Sync state if url param changes
+  useEffect(() => {
+    const p = searchParams.get("deckId");
+    if (p) setSelectedDeckId(p);
+  }, [searchParams]);
+
+  const activeDeck = decks.find((d) => d.id === selectedDeckId);
+
+  // Compute active study cards & shuffle status
+  useEffect(() => {
+    const baseCards = selectedDeckId === "all"
+      ? allCards
+      : activeDeck ? activeDeck.cards : allCards;
+
+    const shouldShuffle = activeDeck?.shuffleQuestions ?? isShuffleActive;
+    setIsShuffleActive(shouldShuffle);
+
+    if (shouldShuffle) {
+      setActiveCards(shuffleArray(baseCards));
+    } else {
+      setActiveCards(baseCards);
+    }
+    setCurrentIndex(0);
+  }, [selectedDeckId, activeDeck, allCards]);
+
+  const handleToggleShuffle = () => {
+    const nextShuffle = !isShuffleActive;
+    setIsShuffleActive(nextShuffle);
+    if (nextShuffle) {
+      setActiveCards(shuffleArray(activeCards));
+    } else {
+      const baseCards = selectedDeckId === "all"
+        ? allCards
+        : activeDeck ? activeDeck.cards : allCards;
+      setActiveCards(baseCards);
+    }
+    setCurrentIndex(0);
+  };
+
+  const handleReshuffleSession = () => {
+    setActiveCards(shuffleArray(activeCards));
+    setCurrentIndex(0);
+  };
+
+  const handleSelectDeck = (deckId: string) => {
+    setSelectedDeckId(deckId);
+    setCurrentIndex(0);
+    if (deckId === "all") {
+      router.push("/review");
+    } else {
+      router.push(`/review?deckId=${deckId}`);
+    }
+  };
+
+  const currentCard = activeCards[currentIndex];
 
   const handleReview = async (remembered: boolean) => {
     if (!currentCard) return;
     await recordReviewResult(currentCard.id, remembered);
-    setCards((prev) =>
+
+    // Update local card difficulty state
+    setActiveCards((prev) =>
       prev.map((card) =>
         card.id === currentCard.id
           ? {
@@ -56,6 +130,7 @@ export default function ReviewPage() {
           : card,
       ),
     );
+
     setStats((prev) => {
       const reviewed = prev.reviewed + 1;
       const correct = prev.correct + (remembered ? 1 : 0);
@@ -68,82 +143,167 @@ export default function ReviewPage() {
     });
 
     setCurrentIndex((prev) => {
-      if (cards.length <= 1) return 0;
-      return (prev + 1) % cards.length;
+      if (activeCards.length <= 1) return 0;
+      return (prev + 1) % activeCards.length;
     });
   };
 
   if (loading) {
     return (
-      <div className="rounded-3xl border border-slate-800 bg-slate-900/70 p-8 text-center text-slate-300">
-        Loading review deck…
-      </div>
-    );
-  }
-
-  if (!cards.length) {
-    return (
-      <div className="rounded-3xl border border-slate-800 bg-slate-900 p-8 text-center text-slate-300">
-        No flashcards yet. Create one to begin your review flow.
+      <div className="rounded-3xl border border-slate-800 bg-slate-900/70 p-12 text-center text-slate-300">
+        <div className="mx-auto mb-3 h-8 w-8 animate-spin rounded-full border-2 border-cyan-400 border-t-transparent" />
+        <p className="text-sm">Loading review deck…</p>
       </div>
     );
   }
 
   return (
-    <div className="space-y-8">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+    <div className="space-y-8 pb-12">
+      {/* Header & Deck Selector */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <p className="text-sm uppercase tracking-[0.3em] text-cyan-300">
-            Review mode
+          <p className="text-xs font-semibold uppercase tracking-[0.25em] text-cyan-300">
+            Active Recall Mode
           </p>
-          <h1 className="mt-2 text-3xl font-bold text-white sm:text-4xl">
-            Study your deck
+          <h1 className="mt-1 text-3xl font-bold text-white sm:text-4xl">
+            {selectedDeckId === "all" ? "Review All Flashcards" : activeDeck?.title || "Review Study Deck"}
           </h1>
         </div>
 
-        <div className="inline-flex items-center rounded-full border border-slate-700 bg-slate-900 px-4 py-2 text-sm text-slate-200">
-          Card{" "}
-          <span className="mx-1 font-semibold text-cyan-300">
-            {currentIndex + 1}
-          </span>{" "}
-          / {cards.length}
+        <div className="flex flex-wrap items-center gap-2.5">
+          <DeckSelector
+            decks={decks}
+            selectedDeckId={selectedDeckId}
+            onSelectDeck={handleSelectDeck}
+            totalCardsCount={allCards.length}
+          />
+
+          {/* Shuffle Questions Toggle Button */}
+          <button
+            type="button"
+            onClick={handleToggleShuffle}
+            title={isShuffleActive ? "Questions are shuffled each take" : "Click to enable shuffle"}
+            className={`inline-flex items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-semibold transition cursor-pointer ${
+              isShuffleActive
+                ? "border border-cyan-400 bg-cyan-500/20 text-cyan-300 shadow-sm shadow-cyan-500/20"
+                : "border border-slate-700 bg-slate-900 text-slate-400 hover:text-slate-200"
+            }`}
+          >
+            <Shuffle size={14} className={isShuffleActive ? "text-cyan-300 animate-pulse" : ""} />
+            <span>{isShuffleActive ? "Shuffled" : "Shuffle Off"}</span>
+          </button>
+
+          {isShuffleActive && activeCards.length > 1 && (
+            <button
+              type="button"
+              onClick={handleReshuffleSession}
+              title="Reshuffle current take"
+              className="inline-flex items-center gap-1 rounded-full border border-slate-700 bg-slate-900 px-3 py-2 text-xs font-semibold text-slate-300 hover:text-white cursor-pointer"
+            >
+              <RotateCcw size={13} />
+              <span>Reshuffle Take</span>
+            </button>
+          )}
+
+          {activeDeck && (
+            <button
+              type="button"
+              onClick={() => setIsShareModalOpen(true)}
+              className="inline-flex items-center gap-1.5 rounded-full border border-cyan-500/40 bg-cyan-500/10 px-3.5 py-2 text-xs font-semibold text-cyan-300 hover:bg-cyan-500/20 transition cursor-pointer"
+            >
+              <Share2 size={14} />
+              Share Deck
+            </button>
+          )}
         </div>
       </div>
 
       <ProgressStats stats={stats} />
 
-      <div className="rounded-[2rem] border border-slate-800 bg-slate-900/60 p-4 shadow-2xl shadow-slate-950/30 sm:p-6">
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-2 text-xs uppercase tracking-[0.2em] text-slate-400">
-            <span className="h-2 w-2 rounded-full bg-cyan-400" />
-            active review
-          </div>
-          <div className="rounded-full border border-slate-700 bg-slate-950 px-3 py-1 text-xs text-slate-300">
-            Difficulty {currentCard.difficulty}/5
+      {!activeCards.length ? (
+        <div className="rounded-3xl border border-dashed border-slate-800 bg-slate-900/40 p-12 text-center">
+          <h3 className="text-lg font-semibold text-white">No flashcards in this deck</h3>
+          <p className="mx-auto mt-1 max-w-sm text-xs text-slate-400">
+            Add cards to this deck or switch to another study set to begin reviewing.
+          </p>
+          <div className="mt-6 flex justify-center gap-3">
+            <Link
+              href={activeDeck ? `/create?deckId=${activeDeck.id}` : "/create"}
+              className="inline-flex items-center gap-1.5 rounded-full bg-cyan-500 px-5 py-2.5 text-xs font-bold text-slate-950 hover:bg-cyan-400 transition"
+            >
+              <Plus size={15} />
+              Add Cards Now
+            </Link>
           </div>
         </div>
+      ) : (
+        <div className="rounded-[2.5rem] border border-slate-800 bg-slate-900/60 p-5 shadow-2xl shadow-slate-950/40 sm:p-8">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2 text-xs uppercase tracking-[0.2em] text-slate-400">
+              <span className="h-2 w-2 rounded-full bg-cyan-400" />
+              Card {currentIndex + 1} of {activeCards.length}
+              {isShuffleActive && (
+                <span className="text-[10px] text-cyan-400 bg-cyan-500/10 px-2 py-0.5 rounded-md border border-cyan-500/20">
+                  🔀 Shuffled
+                </span>
+              )}
+            </div>
+            {currentCard && (
+              <div className="rounded-full border border-slate-700 bg-slate-950 px-3 py-1 text-xs text-slate-300">
+                Difficulty {currentCard.difficulty}/5
+              </div>
+            )}
+          </div>
 
-        <div className="mx-auto flex max-w-2xl flex-col items-center gap-6">
-          <FlashcardCard card={currentCard} />
+          <div className="mx-auto flex max-w-2xl flex-col items-center gap-6">
+            {currentCard && <FlashcardCard card={currentCard} />}
 
-          <div className="flex w-full flex-col gap-3 sm:flex-row">
-            <button
-              type="button"
-              onClick={() => handleReview(true)}
-              className="flex-1 rounded-2xl bg-emerald-500 px-5 py-4 text-base font-semibold text-slate-950 transition hover:bg-emerald-400"
-            >
-              Got it
-            </button>
-            <button
-              type="button"
-              onClick={() => handleReview(false)}
-              className="flex-1 rounded-2xl border border-amber-400/70 bg-amber-500/10 px-5 py-4 text-base font-semibold text-amber-100 transition hover:bg-amber-500/20"
-            >
-              Need practice
-            </button>
+            <div className="flex w-full flex-col gap-3 sm:flex-row">
+              <button
+                type="button"
+                onClick={() => handleReview(true)}
+                className="flex-1 rounded-2xl bg-emerald-500 px-5 py-4 text-base font-bold text-slate-950 shadow-lg shadow-emerald-500/20 transition hover:bg-emerald-400 cursor-pointer"
+              >
+                Got it (Mastered)
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleReview(false)}
+                className="flex-1 rounded-2xl border border-rose-500/40 bg-rose-500/10 px-5 py-4 text-base font-bold text-rose-300 transition hover:bg-rose-500/20 cursor-pointer"
+              >
+                Still Learning (Review Again)
+              </button>
+            </div>
           </div>
         </div>
-      </div>
+      )}
+
+      {activeDeck && (
+        <ShareDeckModal
+          deck={activeDeck}
+          isOpen={isShareModalOpen}
+          onClose={() => setIsShareModalOpen(false)}
+          onDeckUpdated={(updated) => {
+            setDecks((prev) => prev.map((d) => (d.id === updated.id ? updated : d)));
+          }}
+        />
+      )}
     </div>
+  );
+}
+
+export default function ReviewPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="rounded-3xl border border-slate-800 bg-slate-900/70 p-12 text-center text-slate-300">
+          <div className="mx-auto mb-3 h-8 w-8 animate-spin rounded-full border-2 border-cyan-400 border-t-transparent" />
+          <p className="text-sm">Loading review session…</p>
+        </div>
+      }
+    >
+      <ReviewContent />
+    </Suspense>
   );
 }

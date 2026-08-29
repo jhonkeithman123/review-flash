@@ -1,64 +1,7 @@
-import { Flashcard } from "@/types/flashcard";
+// Hardcoded starter flashcards have been moved to Firebase Firestore (collection: `public_decks` and `shared_decks`).
+// Run `bun run seed:firebase` to re-seed or manage starter decks in Firestore.
 
-export const INITIAL_FLASHCARDS: Flashcard[] = [
-  {
-    id: "card-1",
-    question: "What is the primary function of React's useEffect hook?",
-    answer: "To handle side effects like data fetching, subscriptions, or manually manipulating the DOM after render.",
-    tags: ["React", "JavaScript", "Frontend"],
-    difficulty: 2,
-    createdAt: Date.now() - 86400000 * 3,
-    reviewCount: 3,
-    correctCount: 2,
-  },
-  {
-    id: "card-2",
-    question: "What is Cloud Firestore in Firebase?",
-    answer: "A flexible, scalable NoSQL document database for mobile, web, and server development from Firebase and Google Cloud.",
-    tags: ["Firebase", "Database", "Backend"],
-    difficulty: 2,
-    createdAt: Date.now() - 86400000 * 2,
-    reviewCount: 4,
-    correctCount: 4,
-  },
-  {
-    id: "card-3",
-    question: "What does CSS 'box-sizing: border-box' do?",
-    answer: "It includes padding and border in the element's total width and height calculations.",
-    tags: ["CSS", "Frontend", "Web"],
-    difficulty: 1,
-    createdAt: Date.now() - 86400000 * 4,
-    reviewCount: 2,
-    correctCount: 2,
-  },
-  {
-    id: "card-4",
-    question: "What is the time complexity of searching in a balanced Binary Search Tree (BST)?",
-    answer: "O(log n) on average and in the worst case for balanced trees.",
-    tags: ["Algorithms", "Computer Science"],
-    difficulty: 3,
-    createdAt: Date.now() - 86400000 * 5,
-    reviewCount: 1,
-    correctCount: 0,
-  },
-  {
-    id: "card-5",
-    question: "What is the purpose of Next.js App Router Server Components?",
-    answer: "They allow components to render on the server by default, reducing client bundle size and improving performance.",
-    tags: ["Next.js", "React", "Frontend"],
-    difficulty: 3,
-    createdAt: Date.now() - 86400000 * 1,
-    reviewCount: 5,
-    correctCount: 4,
-  },
-  {
-    id: "card-6",
-    question: "What is Spaced Repetition (e.g. SM2 algorithm)?",
-    answer: "An evidence-based learning technique that incorporates increasing intervals of time between subsequent review of previously learned material.",
-    tags: ["Learning", "Study Techniques"],
-    difficulty: 2,
-    createdAt: Date.now() - 86400000 * 6,
-    reviewCount: 2,
-    correctCount: 2,
-  }
-];
+import { Deck, Flashcard } from "@/types/flashcard";
+
+export const INITIAL_FLASHCARDS: Flashcard[] = [];
+export const INITIAL_DECKS: Deck[] = [];
