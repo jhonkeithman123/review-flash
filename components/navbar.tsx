@@ -74,11 +74,13 @@ export function Navbar() {
           if (result.user.email) setCurrentUserEmail(result.user.email);
           if (result.user.displayName) setCurrentUserName(result.user.displayName);
           setAuthError(null);
+        } else {
+          console.log("ℹ️ [getRedirectResult]: No pending redirect result");
         }
       })
       .catch((err: unknown) => {
         const error = err as { code?: string; message?: string };
-        console.warn("Firebase redirect auth result check:", err);
+        console.error("❌ [getRedirectResult Error]:", err);
         if (error?.code === "auth/unauthorized-domain") {
           setAuthError({
             title: "Domain Not Authorized in Firebase",
@@ -119,8 +121,9 @@ export function Navbar() {
     setIsSigningIn(true);
     setAuthError(null);
 
+    console.log("🚀 [handleGoogleSignIn] Attempting signInWithPopup...");
+
     try {
-      // First try popup
       const result = await signInWithPopup(auth, googleProvider);
       if (result?.user) {
         console.log("✅ [Google Popup Auth Success]:", result.user);
@@ -133,7 +136,7 @@ export function Navbar() {
       }
     } catch (error: unknown) {
       const authErr = error as { code?: string; message?: string };
-      console.warn("Popup sign-in failed, falling back to full-page redirect...", authErr);
+      console.warn("⚠️ [signInWithPopup failed/blocked]:", authErr);
 
       if (
         authErr?.code === "auth/popup-blocked" ||
@@ -141,12 +144,12 @@ export function Navbar() {
         authErr?.code === "auth/popup-closed-by-user" ||
         authErr?.code === "auth/internal-error"
       ) {
+        console.log("🔄 [handleGoogleSignIn] Seamlessly falling back to signInWithRedirect...");
         try {
-          // Seamless fallback to full-page redirect
           await signInWithRedirect(auth, googleProvider);
           return;
         } catch (redirectErr) {
-          console.error("Redirect sign-in failed:", redirectErr);
+          console.error("❌ [Redirect sign-in failed]:", redirectErr);
         }
       }
 
@@ -172,10 +175,11 @@ export function Navbar() {
   const handleForceRedirect = async () => {
     if (!auth) return;
     setIsSigningIn(true);
+    console.log("🚀 [handleForceRedirect] Calling signInWithRedirect directly...");
     try {
       await signInWithRedirect(auth, googleProvider);
     } catch (e) {
-      console.error("Direct redirect failed:", e);
+      console.error("❌ [Direct redirect failed]:", e);
       setIsSigningIn(false);
     }
   };
@@ -190,6 +194,7 @@ export function Navbar() {
       setAnonId(getCurrentUserId());
       setMobileMenuOpen(false);
       setAuthError(null);
+      console.log("👋 [Signed Out]");
     } catch (error) {
       console.error("Sign out failed", error);
     }
