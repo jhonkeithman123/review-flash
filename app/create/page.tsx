@@ -90,8 +90,9 @@ function parseTextToCards(
   const normalized = rawText.replace(/\r\n/g, "\n").trim();
   if (!normalized) return [];
 
-  // Check if text has numbered items (e.g., "1. ", "2) ", "Q1: ", "1 - ")
-  const hasNumberedItems = /(?:^|\n)\s*(?:(?:Q\s*|Question\s*)?\d+[\.\)\:\-\]]|\bQ\d+[:\.\-])/i.test(normalized);
+  // Check if text has numbered items (e.g., "1. ", "2) ", "Q1: ", "1 - ", "Item 1. ")
+  // Must ensure delimiter is followed by whitespace and NOT immediately followed by a digit (to avoid matching 3.3V, 802.11n, 2.0)
+  const hasNumberedItems = /(?:^|\n)\s*(?:(?:(?:Q\s*|Question\s*|Item\s*|No\.?\s*)?\d+[\.\)\:\-\]]|\bQ\d+[:\.\-])\s+(?!\d))/i.test(normalized);
   // Check if text has bold markdown or HTML
   const hasBoldMarkers = /(\*\*(.+?)\*\*|<b>(.+?)<\/b>|<strong>(.+?)<\/strong>)/.test(normalized);
 
@@ -104,6 +105,8 @@ function parseTextToCards(
       effectiveMode = "bold-answer";
     } else if (normalized.includes("\t") || normalized.includes(" - ") || /Q\s*[:.-]/i.test(normalized)) {
       effectiveMode = "delimiter";
+    } else if (normalized.includes("\n\n")) {
+      effectiveMode = "numbered"; // Paragraph blocks
     } else {
       effectiveMode = "numbered"; // fallback
     }
@@ -113,8 +116,15 @@ function parseTextToCards(
   // STRATEGY 1: NUMBERED REVIEWER / EXAM Q&A (e.g. 1. Question...\nAnswer\n2. ...)
   // ----------------------------------------------------
   if (effectiveMode === "numbered") {
-    const itemHeaderRegex = /(?:^|\n)(?=(?:(?:Q\s*|Question\s*)?\d+[\.\)\:\-\]]|\bQ\d+[:\.\-]))/i;
-    const rawBlocks = normalized.split(itemHeaderRegex).map((b) => b.trim()).filter(Boolean);
+    // Split on numbered headers that are followed by whitespace and not a decimal number
+    const itemHeaderRegex = /(?:^|\n)\s*(?=(?:(?:(?:Q\s*|Question\s*|Item\s*|No\.?\s*)?\d+[\.\)\:\-\]]|\bQ\d+[:\.\-])\s+(?!\d)))/i;
+    let rawBlocks = normalized.split(itemHeaderRegex).map((b) => b.trim()).filter(Boolean);
+
+    // Fallback: If no blocks found via header regex but double newlines exist
+    if (rawBlocks.length <= 1 && normalized.includes("\n\n")) {
+      rawBlocks = normalized.split(/\n{2,}/).map((b) => b.trim()).filter(Boolean);
+    }
+
     const results: StagedCard[] = [];
 
     for (let i = 0; i < rawBlocks.length; i++) {
@@ -122,39 +132,59 @@ function parseTextToCards(
       const lines = block.split("\n").map((l) => l.trim()).filter(Boolean);
       if (lines.length === 0) continue;
 
-      // Check if block has explicit Answer prefix
-      const explicitAnsIdx = lines.findIndex((l) => /^(?:Ans(?:wer)?|A)\s*[:.\-]\s*/i.test(l));
+      // Check if block has explicit Answer prefix (e.g. "Ans:", "Answer:", "A:", "Key:")
+      const explicitAnsIdx = lines.findIndex((l) =>
+        /^(?:Ans(?:wer)?|A|Key|Correct(?:\s+Answer)?)\s*[:.\-–—]\s*/i.test(l)
+      );
 
       let qRaw = "";
       let aRaw = "";
 
       if (explicitAnsIdx !== -1) {
         qRaw = lines.slice(0, explicitAnsIdx).join(" ").trim();
-        aRaw = lines.slice(explicitAnsIdx).join(" ").replace(/^(?:Ans(?:wer)?|A)\s*[:.\-]\s*/i, "").trim();
+        aRaw = lines
+          .slice(explicitAnsIdx)
+          .join(" ")
+          .replace(/^(?:Ans(?:wer)?|A|Key|Correct(?:\s+Answer)?)\s*[:.\-–—]\s*/i, "")
+          .trim();
       } else if (lines.length >= 2) {
-        // Find if any line ends with a question mark '?'
-        const qMarkIdx = lines.findIndex((l) => l.endsWith("?"));
+        // Find if any line ends with or contains a question mark '?'
+        const qMarkIdx = lines.findIndex((l) => l.endsWith("?") || l.includes("?"));
         if (qMarkIdx !== -1 && qMarkIdx < lines.length - 1) {
-          qRaw = lines.slice(0, qMarkIdx + 1).join(" ").trim();
-          aRaw = lines.slice(qMarkIdx + 1).join(" ").trim();
+          const qLine = lines[qMarkIdx];
+          if (qLine.endsWith("?")) {
+            qRaw = lines.slice(0, qMarkIdx + 1).join(" ").trim();
+            aRaw = lines.slice(qMarkIdx + 1).join(" ").trim();
+          } else {
+            const splitPos = qLine.indexOf("?");
+            const beforeQ = qLine.substring(0, splitPos + 1).trim();
+            const afterQ = qLine.substring(splitPos + 1).trim();
+            const prevLines = lines.slice(0, qMarkIdx);
+            qRaw = [...prevLines, beforeQ].join(" ").trim();
+            aRaw = [afterQ, ...lines.slice(qMarkIdx + 1)].filter(Boolean).join(" ").trim();
+          }
         } else {
-          // Last line is answer, preceding lines are question
+          // In multi-line blocks without '?', the final line is the answer, all preceding lines are the question
           qRaw = lines.slice(0, lines.length - 1).join(" ").trim();
           aRaw = lines[lines.length - 1].trim();
         }
       } else if (lines.length === 1) {
-        // Single line item - check for inline separator or bold
+        // Single line item - check for inline separator or question mark
         const single = lines[0];
-        if (single.includes("\t")) {
+        if (single.includes("?") && single.indexOf("?") < single.length - 2) {
+          const splitPos = single.indexOf("?");
+          qRaw = single.substring(0, splitPos + 1).trim();
+          aRaw = single.substring(splitPos + 1).trim();
+        } else if (single.includes("\t")) {
           const parts = single.split("\t");
           qRaw = parts[0].trim();
           aRaw = parts.slice(1).join("\t").trim();
-        } else if (single.includes(" - ") || single.includes(" -- ")) {
-          const parts = single.includes(" -- ") ? single.split(" -- ") : single.split(" - ");
+        } else if (/\s+[-–—]{1,2}\s+/.test(single)) {
+          const parts = single.split(/\s+[-–—]{1,2}\s+/);
           qRaw = parts[0].trim();
           aRaw = parts.slice(1).join(" - ").trim();
-        } else if (single.includes(" : ") || single.includes(":\t")) {
-          const parts = single.split(/:\s+|\t/);
+        } else if (/\s*:\s+/.test(single)) {
+          const parts = single.split(/\s*:\s+/);
           qRaw = parts[0].trim();
           aRaw = parts.slice(1).join(": ").trim();
         }
@@ -166,13 +196,18 @@ function parseTextToCards(
         aRaw = boldInAns[2] || boldInAns[3] || boldInAns[4] || aRaw;
       }
 
-      // Strip leading number if enabled
+      // Strip leading question numbers if enabled (without stripping digits inside text)
       let cleanQuestion = qRaw;
       if (stripNumbers) {
-        cleanQuestion = cleanQuestion.replace(/^(?:(?:Q\s*|Question\s*)?\d+[\.\)\:\-\]]*|\bQ\d+[:\.\-]*)\s*/i, "").trim();
+        cleanQuestion = cleanQuestion
+          .replace(/^(?:(?:Q\s*|Question\s*|Item\s*|No\.?\s*)?\d+[\.\)\:\-\]]*|\bQ\d+[:\.\-]*)\s+(?!\d)/i, "")
+          .trim();
       }
 
-      const cleanAnswer = aRaw.trim();
+      const cleanAnswer = aRaw
+        .replace(/^(?:Ans(?:wer)?|A|Key)\s*[:.\-–—]\s*/i, "")
+        .replace(/^[•\-\*]\s*/, "")
+        .trim();
 
       if (cleanQuestion && cleanAnswer) {
         results.push({
@@ -231,7 +266,9 @@ function parseTextToCards(
         }
 
         if (stripNumbers) {
-          questionText = questionText.replace(/^(?:(?:Q\s*|Question\s*)?\d+[\.\)\:\-\]]*|\bQ\d+[:\.\-]*)\s*/i, "").trim();
+          questionText = questionText
+            .replace(/^(?:(?:Q\s*|Question\s*|Item\s*|No\.?\s*)?\d+[\.\)\:\-\]]*|\bQ\d+[:\.\-]*)\s+(?!\d)/i, "")
+            .trim();
         }
 
         if (questionText && answerText) {
@@ -269,7 +306,9 @@ function parseTextToCards(
           .trim();
 
         if (stripNumbers) {
-          questionText = questionText.replace(/^(?:(?:Q\s*|Question\s*)?\d+[\.\)\:\-\]]*|\bQ\d+[:\.\-]*)\s*/i, "").trim();
+          questionText = questionText
+            .replace(/^(?:(?:Q\s*|Question\s*|Item\s*|No\.?\s*)?\d+[\.\)\:\-\]]*|\bQ\d+[:\.\-]*)\s+(?!\d)/i, "")
+            .trim();
         }
 
         if (questionText && answerText) {
@@ -302,7 +341,7 @@ function parseTextToCards(
         if (curQ && curA) {
           results.push({
             tempId: "staged-qa-" + results.length,
-            question: stripNumbers ? curQ.replace(/^(?:(?:Q\s*|Question\s*)?\d+[\.\)\:\-\]]*|\bQ\d+[:\.\-]*)\s*/i, "").trim() : curQ,
+            question: stripNumbers ? curQ.replace(/^(?:(?:Q\s*|Question\s*|Item\s*|No\.?\s*)?\d+[\.\)\:\-\]]*|\bQ\d+[:\.\-]*)\s+(?!\d)/i, "").trim() : curQ,
             answer: curA,
             tags: activeTags,
             difficulty: 3,
@@ -320,7 +359,7 @@ function parseTextToCards(
     if (curQ && curA) {
       results.push({
         tempId: "staged-qa-" + results.length,
-        question: stripNumbers ? curQ.replace(/^(?:(?:Q\s*|Question\s*)?\d+[\.\)\:\-\]]*|\bQ\d+[:\.\-]*)\s*/i, "").trim() : curQ,
+        question: stripNumbers ? curQ.replace(/^(?:(?:Q\s*|Question\s*|Item\s*|No\.?\s*)?\d+[\.\)\:\-\]]*|\bQ\d+[:\.\-]*)\s+(?!\d)/i, "").trim() : curQ,
         answer: curA,
         tags: activeTags,
         difficulty: 3,
@@ -336,8 +375,8 @@ function parseTextToCards(
         const parts = line.split("\t");
         q = parts[0]?.trim();
         a = parts.slice(1).join("\t").trim();
-      } else if (delimiter === "dash" || (delimiter === "auto" && (line.includes(" - ") || line.includes(" -- ")))) {
-        const parts = line.includes(" -- ") ? line.split(" -- ") : line.split(" - ");
+      } else if (delimiter === "dash" || (delimiter === "auto" && (line.includes(" - ") || line.includes(" -- ") || line.includes(" — ")))) {
+        const parts = line.split(/\s+[-–—]{1,2}\s+/);
         q = parts[0]?.trim();
         a = parts.slice(1).join(" - ").trim();
       } else if (delimiter === "semicolon" || (delimiter === "auto" && line.includes(";"))) {
@@ -357,7 +396,7 @@ function parseTextToCards(
       }
 
       if (stripNumbers && q) {
-        q = q.replace(/^(?:(?:Q\s*|Question\s*)?\d+[\.\)\:\-\]]*|\bQ\d+[:\.\-]*)\s*/i, "").trim();
+        q = q.replace(/^(?:(?:Q\s*|Question\s*|Item\s*|No\.?\s*)?\d+[\.\)\:\-\]]*|\bQ\d+[:\.\-]*)\s+(?!\d)/i, "").trim();
       }
 
       if (q && a) {
