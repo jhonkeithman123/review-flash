@@ -27,7 +27,14 @@ import {
   UserCircle2,
   X,
 } from "lucide-react";
-import { onAuthStateChanged, signInWithPopup, signOut, User } from "firebase/auth";
+import {
+  getRedirectResult,
+  onAuthStateChanged,
+  signInWithPopup,
+  signInWithRedirect,
+  signOut,
+  User,
+} from "firebase/auth";
 import { useEffect, useState } from "react";
 
 const navItems = [
@@ -52,6 +59,20 @@ export function Navbar() {
       setUser(null);
       return;
     }
+
+    // Handle return from redirect sign-in (e.g. mobile Safari / Chrome or when popup is blocked)
+    getRedirectResult(auth)
+      .then((result) => {
+        if (result?.user) {
+          setUser(result.user);
+          setCurrentUserId(result.user.uid);
+          if (result.user.email) setCurrentUserEmail(result.user.email);
+          if (result.user.displayName) setCurrentUserName(result.user.displayName);
+        }
+      })
+      .catch((err) => {
+        console.warn("Firebase redirect auth result check:", err);
+      });
 
     const unsubscribe = onAuthStateChanged(auth, (nextUser) => {
       setUser(nextUser);
@@ -80,8 +101,22 @@ export function Navbar() {
       if (result.user.email) setCurrentUserEmail(result.user.email);
       if (result.user.displayName) setCurrentUserName(result.user.displayName);
       setMobileMenuOpen(false);
-    } catch (error) {
-      console.error("Google sign-in failed", error);
+    } catch (error: unknown) {
+      console.warn("Popup sign-in failed or blocked, attempting redirect fallback...", error);
+      const authErr = error as { code?: string };
+      // If browser blocked the popup, seamlessly fallback to full page redirect
+      if (
+        authErr?.code === "auth/popup-blocked" ||
+        authErr?.code === "auth/cancelled-popup-request" ||
+        authErr?.code === "auth/popup-closed-by-user" ||
+        authErr?.code === "auth/unauthorized-domain"
+      ) {
+        try {
+          await signInWithRedirect(auth, googleProvider);
+        } catch (redirectError) {
+          console.error("Redirect sign-in also failed:", redirectError);
+        }
+      }
     }
   };
 
