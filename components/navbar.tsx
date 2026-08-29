@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { auth, googleProvider, isFirebaseConfigured } from "@/lib/firebase";
+import { auth, isFirebaseConfigured } from "@/lib/firebase";
 import {
   clearCurrentUserId,
   getCurrentUserEmail,
@@ -18,26 +18,23 @@ import {
   BrainCircuit,
   Check,
   Copy,
-  ExternalLink,
   FolderKanban,
   House,
   LogIn,
   LogOut,
   Menu,
   PlusCircle,
-  Shield,
   UserCircle2,
   X,
 } from "lucide-react";
 import {
   getRedirectResult,
   onAuthStateChanged,
-  signInWithPopup,
-  signInWithRedirect,
   signOut,
   User,
 } from "firebase/auth";
 import { useEffect, useState } from "react";
+import { AuthModal } from "./auth-modal";
 
 const navItems = [
   { href: "/", label: "Home", icon: House },
@@ -53,8 +50,7 @@ export function Navbar() {
   const [anonId, setAnonId] = useState<string>("");
   const [copiedId, setCopiedId] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [isSigningIn, setIsSigningIn] = useState(false);
-  const [authError, setAuthError] = useState<{ title: string; message: string; code?: string } | null>(null);
+  const [authModalOpen, setAuthModalOpen] = useState(false);
 
   useEffect(() => {
     setAnonId(getCurrentUserId());
@@ -73,31 +69,22 @@ export function Navbar() {
           setCurrentUserId(result.user.uid);
           if (result.user.email) setCurrentUserEmail(result.user.email);
           if (result.user.displayName) setCurrentUserName(result.user.displayName);
-          setAuthError(null);
-        } else {
-          console.log("ℹ️ [getRedirectResult]: No pending redirect result");
         }
       })
-      .catch((err: unknown) => {
-        const error = err as { code?: string; message?: string };
-        console.error("❌ [getRedirectResult Error]:", err);
-        if (error?.code === "auth/unauthorized-domain") {
-          setAuthError({
-            title: "Domain Not Authorized in Firebase",
-            message: `Please verify that "${window.location.hostname}" is listed under Firebase Console -> Authentication -> Settings -> Authorized Domains.`,
-            code: error.code,
-          });
-        }
+      .catch((err) => {
+        console.warn("Firebase redirect auth result check:", err);
       });
 
     const unsubscribe = onAuthStateChanged(auth, (nextUser) => {
-      console.log("👤 [onAuthStateChanged]:", nextUser ? `${nextUser.displayName || nextUser.email} (${nextUser.uid})` : "No active user");
+      console.log(
+        "👤 [onAuthStateChanged]:",
+        nextUser ? `${nextUser.displayName || nextUser.email} (${nextUser.uid})` : "No active user"
+      );
       setUser(nextUser);
       if (nextUser?.uid) {
         setCurrentUserId(nextUser.uid);
         if (nextUser.email) setCurrentUserEmail(nextUser.email);
         if (nextUser.displayName) setCurrentUserName(nextUser.displayName);
-        setAuthError(null);
       }
     });
 
@@ -109,81 +96,6 @@ export function Navbar() {
     setMobileMenuOpen(false);
   }, [pathname]);
 
-  const handleGoogleSignIn = async () => {
-    if (!isFirebaseConfigured || !auth) {
-      setAuthError({
-        title: "Firebase Not Configured",
-        message: "Firebase environment variables are missing. Running in local storage mode.",
-      });
-      return;
-    }
-
-    setIsSigningIn(true);
-    setAuthError(null);
-
-    console.log("🚀 [handleGoogleSignIn] Attempting signInWithPopup...");
-
-    try {
-      const result = await signInWithPopup(auth, googleProvider);
-      if (result?.user) {
-        console.log("✅ [Google Popup Auth Success]:", result.user);
-        setUser(result.user);
-        setCurrentUserId(result.user.uid);
-        if (result.user.email) setCurrentUserEmail(result.user.email);
-        if (result.user.displayName) setCurrentUserName(result.user.displayName);
-        setMobileMenuOpen(false);
-        setAuthError(null);
-      }
-    } catch (error: unknown) {
-      const authErr = error as { code?: string; message?: string };
-      console.warn("⚠️ [signInWithPopup failed/blocked]:", authErr);
-
-      if (
-        authErr?.code === "auth/popup-blocked" ||
-        authErr?.code === "auth/cancelled-popup-request" ||
-        authErr?.code === "auth/popup-closed-by-user" ||
-        authErr?.code === "auth/internal-error"
-      ) {
-        console.log("🔄 [handleGoogleSignIn] Seamlessly falling back to signInWithRedirect...");
-        try {
-          await signInWithRedirect(auth, googleProvider);
-          return;
-        } catch (redirectErr) {
-          console.error("❌ [Redirect sign-in failed]:", redirectErr);
-        }
-      }
-
-      if (authErr?.code === "auth/unauthorized-domain") {
-        const hostname = typeof window !== "undefined" ? window.location.hostname : "your domain";
-        setAuthError({
-          title: "Domain Not Authorized in Firebase Console",
-          message: `Firebase blocked sign-in from "${hostname}". Add "${hostname}" to Firebase Console ➔ Authentication ➔ Settings ➔ Authorized domains.`,
-          code: authErr.code,
-        });
-      } else {
-        setAuthError({
-          title: "Sign-In Notice",
-          message: authErr?.message || "Popup sign-in did not complete. Click the button below to try full page sign-in.",
-          code: authErr?.code,
-        });
-      }
-    } finally {
-      setIsSigningIn(false);
-    }
-  };
-
-  const handleForceRedirect = async () => {
-    if (!auth) return;
-    setIsSigningIn(true);
-    console.log("🚀 [handleForceRedirect] Calling signInWithRedirect directly...");
-    try {
-      await signInWithRedirect(auth, googleProvider);
-    } catch (e) {
-      console.error("❌ [Direct redirect failed]:", e);
-      setIsSigningIn(false);
-    }
-  };
-
   const handleSignOut = async () => {
     if (!auth) return;
 
@@ -193,7 +105,6 @@ export function Navbar() {
       clearCurrentUserId();
       setAnonId(getCurrentUserId());
       setMobileMenuOpen(false);
-      setAuthError(null);
       console.log("👋 [Signed Out]");
     } catch (error) {
       console.error("Sign out failed", error);
@@ -255,7 +166,7 @@ export function Navbar() {
                 <div className="flex items-center gap-2 rounded-full border border-emerald-500/40 bg-emerald-500/10 px-3 py-1.5 text-xs text-emerald-200">
                   <UserCircle2 size={16} className="text-emerald-400 shrink-0" />
                   <span className="font-medium max-w-[140px] truncate">
-                    {user.displayName || user.email || "Google user"}
+                    {user.displayName || user.email || "Learner"}
                   </span>
                   <button
                     type="button"
@@ -292,16 +203,11 @@ export function Navbar() {
                   </button>
                   <button
                     type="button"
-                    disabled={isSigningIn}
-                    onClick={handleGoogleSignIn}
-                    className="inline-flex items-center gap-1.5 rounded-full bg-cyan-500 px-3.5 py-1.5 text-xs font-semibold text-slate-950 transition hover:bg-cyan-400 disabled:opacity-60 cursor-pointer shadow-sm"
+                    onClick={() => setAuthModalOpen(true)}
+                    className="inline-flex items-center gap-1.5 rounded-full bg-cyan-500 px-3.5 py-1.5 text-xs font-semibold text-slate-950 transition hover:bg-cyan-400 cursor-pointer shadow-sm"
                   >
-                    {isSigningIn ? (
-                      <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-slate-950 border-t-transparent" />
-                    ) : (
-                      <LogIn size={14} />
-                    )}
-                    <span>{isSigningIn ? "Connecting…" : "Sign in"}</span>
+                    <LogIn size={14} />
+                    <span>Sign in / Register</span>
                   </button>
                 </div>
               )
@@ -325,16 +231,11 @@ export function Navbar() {
               ) : (
                 <button
                   type="button"
-                  disabled={isSigningIn}
-                  onClick={handleGoogleSignIn}
-                  className="inline-flex items-center gap-1.5 rounded-full bg-cyan-500 px-3 py-1 text-xs font-semibold text-slate-950 transition hover:bg-cyan-400 disabled:opacity-60 cursor-pointer shadow-sm"
+                  onClick={() => setAuthModalOpen(true)}
+                  className="inline-flex items-center gap-1.5 rounded-full bg-cyan-500 px-3 py-1 text-xs font-semibold text-slate-950 transition hover:bg-cyan-400 cursor-pointer shadow-sm"
                 >
-                  {isSigningIn ? (
-                    <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-slate-950 border-t-transparent" />
-                  ) : (
-                    <LogIn size={13} />
-                  )}
-                  <span>{isSigningIn ? "Connecting…" : "Sign in"}</span>
+                  <LogIn size={13} />
+                  <span>Sign in</span>
                 </button>
               )
             ) : null}
@@ -366,7 +267,7 @@ export function Navbar() {
                         </div>
                         <div className="min-w-0">
                           <div className="text-xs font-bold text-slate-100 truncate">
-                            {user.displayName || "Google User"}
+                            {user.displayName || "Learner"}
                           </div>
                           <div className="text-[11px] text-slate-400 truncate">
                             {user.email}
@@ -414,16 +315,14 @@ export function Navbar() {
 
                     <button
                       type="button"
-                      disabled={isSigningIn}
-                      onClick={handleGoogleSignIn}
-                      className="w-full flex items-center justify-center gap-2 rounded-xl bg-cyan-500 px-4 py-2.5 text-xs font-bold text-slate-950 hover:bg-cyan-400 disabled:opacity-60 transition cursor-pointer shadow-md"
+                      onClick={() => {
+                        setMobileMenuOpen(false);
+                        setAuthModalOpen(true);
+                      }}
+                      className="w-full flex items-center justify-center gap-2 rounded-xl bg-cyan-500 px-4 py-2.5 text-xs font-bold text-slate-950 hover:bg-cyan-400 transition cursor-pointer shadow-md"
                     >
-                      {isSigningIn ? (
-                        <div className="h-4 w-4 animate-spin rounded-full border-2 border-slate-950 border-t-transparent" />
-                      ) : (
-                        <LogIn size={15} />
-                      )}
-                      <span>{isSigningIn ? "Connecting with Google…" : "Sign in with Google"}</span>
+                      <LogIn size={15} />
+                      <span>Sign In / Create Account</span>
                     </button>
                   </div>
                 )
@@ -465,37 +364,14 @@ export function Navbar() {
         )}
       </nav>
 
-      {/* Actionable Auth Error Banner */}
-      {authError && (
-        <div className="bg-amber-950/90 border-b border-amber-500/40 px-4 py-3 text-amber-200 text-xs backdrop-blur-md animate-in fade-in duration-150">
-          <div className="mx-auto flex max-w-6xl items-start justify-between gap-3">
-            <div className="flex items-start gap-2.5">
-              <AlertCircle size={17} className="text-amber-400 shrink-0 mt-0.5" />
-              <div className="space-y-1">
-                <p className="font-bold text-amber-300">{authError.title}</p>
-                <p className="text-amber-200/90 leading-relaxed">{authError.message}</p>
-                <div className="pt-1 flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={handleForceRedirect}
-                    className="inline-flex items-center gap-1 font-semibold text-cyan-300 bg-cyan-950/80 border border-cyan-500/40 px-2.5 py-1 rounded-lg hover:bg-cyan-900/80 transition cursor-pointer"
-                  >
-                    <ExternalLink size={12} />
-                    Try Full-Page Google Sign-In
-                  </button>
-                </div>
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={() => setAuthError(null)}
-              className="text-amber-400 hover:text-amber-200 font-bold px-1.5 py-0.5 cursor-pointer"
-            >
-              ✕
-            </button>
-          </div>
-        </div>
-      )}
+      {/* Email / Password & Google Auth Modal */}
+      <AuthModal
+        isOpen={authModalOpen}
+        onClose={() => setAuthModalOpen(false)}
+        onSuccess={(u) => {
+          setUser(u);
+        }}
+      />
     </>
   );
 }
