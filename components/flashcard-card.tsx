@@ -2,7 +2,7 @@
 
 import { Flashcard } from "@/types/flashcard";
 import { ArrowLeftRight, Sparkles } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 interface FlashcardCardProps {
   card: Flashcard;
@@ -16,6 +16,10 @@ export function FlashcardCard({
   onToggle,
 }: FlashcardCardProps) {
   const [isFlipped, setIsFlipped] = useState(showAnswer);
+
+  useEffect(() => {
+    setIsFlipped(showAnswer);
+  }, [card.id, showAnswer]);
 
   return (
     <div className="perspective-1000 w-full max-w-xl">
