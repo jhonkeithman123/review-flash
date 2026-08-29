@@ -3,7 +3,15 @@
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { BookOpen, Plus, RotateCcw, Share2, Shuffle, Sparkles } from "lucide-react";
+import {
+  BookOpen,
+  CheckCircle2,
+  Plus,
+  RotateCcw,
+  Share2,
+  Shuffle,
+  Sparkles,
+} from "lucide-react";
 import { FlashcardCard } from "@/components/flashcard-card";
 import { ProgressStats } from "@/components/progress-stats";
 import { DeckSelector } from "@/components/deck-selector";
@@ -39,6 +47,7 @@ function ReviewContent() {
   const [stats, setStats] = useState<UserStats>(initialStats);
   const [loading, setLoading] = useState(true);
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+  const [submittingAction, setSubmittingAction] = useState<"mastered" | "learning" | null>(null);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -114,38 +123,49 @@ function ReviewContent() {
   const currentCard = activeCards[currentIndex];
 
   const handleReview = async (remembered: boolean) => {
-    if (!currentCard) return;
-    await recordReviewResult(currentCard.id, remembered);
+    if (!currentCard || submittingAction !== null) return;
+    setSubmittingAction(remembered ? "mastered" : "learning");
 
-    // Update local card difficulty state
-    setActiveCards((prev) =>
-      prev.map((card) =>
-        card.id === currentCard.id
-          ? {
-              ...card,
-              difficulty: remembered
-                ? Math.max(1, card.difficulty - 1)
-                : Math.min(5, card.difficulty + 1),
-            }
-          : card,
-      ),
-    );
+    try {
+      await recordReviewResult(currentCard.id, remembered);
 
-    setStats((prev) => {
-      const reviewed = prev.reviewed + 1;
-      const correct = prev.correct + (remembered ? 1 : 0);
-      return {
-        ...prev,
-        reviewed,
-        correct,
-        accuracy: reviewed ? Math.round((correct / reviewed) * 100) : 100,
-      };
-    });
+      // Update local card difficulty state
+      setActiveCards((prev) =>
+        prev.map((card) =>
+          card.id === currentCard.id
+            ? {
+                ...card,
+                difficulty: remembered
+                  ? Math.max(1, card.difficulty - 1)
+                  : Math.min(5, card.difficulty + 1),
+              }
+            : card,
+        ),
+      );
 
-    setCurrentIndex((prev) => {
-      if (activeCards.length <= 1) return 0;
-      return (prev + 1) % activeCards.length;
-    });
+      setStats((prev) => {
+        const reviewed = prev.reviewed + 1;
+        const correct = prev.correct + (remembered ? 1 : 0);
+        return {
+          ...prev,
+          reviewed,
+          correct,
+          accuracy: reviewed ? Math.round((correct / reviewed) * 100) : 100,
+        };
+      });
+
+      // Brief smooth transition feedback so user sees the success state before moving to next card
+      await new Promise((resolve) => setTimeout(resolve, 200));
+
+      setCurrentIndex((prev) => {
+        if (activeCards.length <= 1) return 0;
+        return (prev + 1) % activeCards.length;
+      });
+    } catch (e) {
+      console.error("Failed to record review result", e);
+    } finally {
+      setSubmittingAction(null);
+    }
   };
 
   if (loading) {
@@ -261,18 +281,40 @@ function ReviewContent() {
             <div className="flex w-full flex-col gap-3 sm:flex-row">
               <button
                 type="button"
+                disabled={submittingAction !== null}
                 onClick={() => handleReview(true)}
-                className="flex-1 rounded-2xl bg-emerald-500 px-5 py-4 text-base font-bold text-slate-950 shadow-lg shadow-emerald-500/20 transition hover:bg-emerald-400 cursor-pointer"
+                className="flex-1 flex items-center justify-center gap-2 rounded-2xl bg-emerald-500 px-5 py-4 text-base font-bold text-slate-950 shadow-lg shadow-emerald-500/20 transition hover:bg-emerald-400 disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer select-none"
               >
-                Got it (Mastered)
+                {submittingAction === "mastered" ? (
+                  <>
+                    <div className="h-5 w-5 animate-spin rounded-full border-2 border-slate-950 border-t-transparent" />
+                    <span>Recording Mastered…</span>
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 size={19} />
+                    <span>Got it (Mastered)</span>
+                  </>
+                )}
               </button>
 
               <button
                 type="button"
+                disabled={submittingAction !== null}
                 onClick={() => handleReview(false)}
-                className="flex-1 rounded-2xl border border-rose-500/40 bg-rose-500/10 px-5 py-4 text-base font-bold text-rose-300 transition hover:bg-rose-500/20 cursor-pointer"
+                className="flex-1 flex items-center justify-center gap-2 rounded-2xl border border-rose-500/40 bg-rose-500/10 px-5 py-4 text-base font-bold text-rose-300 transition hover:bg-rose-500/20 disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer select-none"
               >
-                Still Learning (Review Again)
+                {submittingAction === "learning" ? (
+                  <>
+                    <div className="h-5 w-5 animate-spin rounded-full border-2 border-rose-300 border-t-transparent" />
+                    <span>Saving for Review…</span>
+                  </>
+                ) : (
+                  <>
+                    <RotateCcw size={18} />
+                    <span>Still Learning (Review Again)</span>
+                  </>
+                )}
               </button>
             </div>
           </div>
