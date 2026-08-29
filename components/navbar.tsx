@@ -13,17 +13,18 @@ import {
   setCurrentUserName,
 } from "@/lib/flashcardService";
 import {
-  AlertCircle,
   BookOpen,
   BrainCircuit,
   Check,
   Copy,
   FolderKanban,
+  GraduationCap,
   House,
   LogIn,
   LogOut,
   Menu,
   PlusCircle,
+  Sparkles,
   UserCircle2,
   X,
 } from "lucide-react";
@@ -76,10 +77,6 @@ export function Navbar() {
       });
 
     const unsubscribe = onAuthStateChanged(auth, (nextUser) => {
-      console.log(
-        "👤 [onAuthStateChanged]:",
-        nextUser ? `${nextUser.displayName || nextUser.email} (${nextUser.uid})` : "No active user"
-      );
       setUser(nextUser);
       if (nextUser?.uid) {
         setCurrentUserId(nextUser.uid);
@@ -123,6 +120,13 @@ export function Navbar() {
     }
   };
 
+  const handleOpenTour = () => {
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("open-reviewflash-tour"));
+      setMobileMenuOpen(false);
+    }
+  };
+
   return (
     <>
       <nav className="sticky top-0 z-40 border-b border-slate-800 bg-slate-950/85 backdrop-blur-xl transition-all">
@@ -161,6 +165,17 @@ export function Navbar() {
 
           {/* Desktop Auth / User ID Section (>= lg / 1024px) */}
           <div className="hidden lg:flex items-center gap-2.5 shrink-0">
+            {/* Interactive Tour Button */}
+            <button
+              type="button"
+              onClick={handleOpenTour}
+              title="Interactive App Walkthrough & Guide"
+              className="inline-flex items-center gap-1.5 rounded-full border border-cyan-500/30 bg-cyan-500/10 px-3 py-1.5 text-xs font-semibold text-cyan-300 hover:bg-cyan-500/20 transition cursor-pointer"
+            >
+              <GraduationCap size={14} className="text-cyan-400" />
+              <span>Tour 🎓</span>
+            </button>
+
             {isFirebaseConfigured ? (
               user ? (
                 <div className="flex items-center gap-2 rounded-full border border-emerald-500/40 bg-emerald-500/10 px-3 py-1.5 text-xs text-emerald-200">
@@ -220,6 +235,15 @@ export function Navbar() {
 
           {/* Mobile & Tablet (< lg) Header Actions */}
           <div className="flex lg:hidden items-center gap-2">
+            <button
+              type="button"
+              onClick={handleOpenTour}
+              className="inline-flex items-center gap-1 rounded-full border border-cyan-500/30 bg-cyan-500/10 px-2.5 py-1 text-xs font-semibold text-cyan-300 hover:bg-cyan-500/20 cursor-pointer"
+            >
+              <GraduationCap size={13} />
+              <span>Tour</span>
+            </button>
+
             {isFirebaseConfigured ? (
               user ? (
                 <div className="flex items-center gap-1.5 rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2.5 py-1 text-xs text-emerald-200">
@@ -332,6 +356,16 @@ export function Navbar() {
                 </div>
               )}
             </div>
+
+            {/* Quick Tour Button inside Drawer */}
+            <button
+              type="button"
+              onClick={handleOpenTour}
+              className="w-full flex items-center justify-center gap-2 rounded-xl border border-cyan-500/40 bg-cyan-500/10 px-4 py-2 text-xs font-bold text-cyan-300 hover:bg-cyan-500/20 transition cursor-pointer"
+            >
+              <GraduationCap size={15} />
+              <span>Take Interactive Tour 🎓</span>
+            </button>
 
             {/* Navigation Links List */}
             <div className="space-y-1">

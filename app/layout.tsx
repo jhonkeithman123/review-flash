@@ -1,5 +1,6 @@
 import "./globals.css";
 import { Navbar } from "@/components/navbar";
+import { InteractiveTour } from "@/components/interactive-tour";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
@@ -17,6 +18,7 @@ export default function RootLayout({
       <body className="bg-slate-950 text-slate-100 antialiased">
         <Navbar />
         <main className="mx-auto max-w-6xl px-4 py-8">{children}</main>
+        <InteractiveTour />
       </body>
     </html>
   );
