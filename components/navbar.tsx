@@ -18,6 +18,7 @@ import {
   BrainCircuit,
   Check,
   Copy,
+  ExternalLink,
   FolderKanban,
   House,
   LogIn,
@@ -31,6 +32,7 @@ import {
 import {
   getRedirectResult,
   onAuthStateChanged,
+  signInWithPopup,
   signInWithRedirect,
   signOut,
   User,
@@ -66,6 +68,7 @@ export function Navbar() {
     getRedirectResult(auth)
       .then((result) => {
         if (result?.user) {
+          console.log("✅ [Google Redirect Auth Success]:", result.user);
           setUser(result.user);
           setCurrentUserId(result.user.uid);
           if (result.user.email) setCurrentUserEmail(result.user.email);
@@ -86,6 +89,7 @@ export function Navbar() {
       });
 
     const unsubscribe = onAuthStateChanged(auth, (nextUser) => {
+      console.log("👤 [onAuthStateChanged]:", nextUser ? `${nextUser.displayName || nextUser.email} (${nextUser.uid})` : "No active user");
       setUser(nextUser);
       if (nextUser?.uid) {
         setCurrentUserId(nextUser.uid);
@@ -116,12 +120,35 @@ export function Navbar() {
     setAuthError(null);
 
     try {
-      // 100% reliable redirect login: completely immune to browser popup blockers
-      await signInWithRedirect(auth, googleProvider);
+      // First try popup
+      const result = await signInWithPopup(auth, googleProvider);
+      if (result?.user) {
+        console.log("✅ [Google Popup Auth Success]:", result.user);
+        setUser(result.user);
+        setCurrentUserId(result.user.uid);
+        if (result.user.email) setCurrentUserEmail(result.user.email);
+        if (result.user.displayName) setCurrentUserName(result.user.displayName);
+        setMobileMenuOpen(false);
+        setAuthError(null);
+      }
     } catch (error: unknown) {
       const authErr = error as { code?: string; message?: string };
-      console.error("🔥 [Firebase Google Sign-In Error]:", authErr);
-      setIsSigningIn(false);
+      console.warn("Popup sign-in failed, falling back to full-page redirect...", authErr);
+
+      if (
+        authErr?.code === "auth/popup-blocked" ||
+        authErr?.code === "auth/cancelled-popup-request" ||
+        authErr?.code === "auth/popup-closed-by-user" ||
+        authErr?.code === "auth/internal-error"
+      ) {
+        try {
+          // Seamless fallback to full-page redirect
+          await signInWithRedirect(auth, googleProvider);
+          return;
+        } catch (redirectErr) {
+          console.error("Redirect sign-in failed:", redirectErr);
+        }
+      }
 
       if (authErr?.code === "auth/unauthorized-domain") {
         const hostname = typeof window !== "undefined" ? window.location.hostname : "your domain";
@@ -132,11 +159,24 @@ export function Navbar() {
         });
       } else {
         setAuthError({
-          title: "Sign-In Failed",
-          message: authErr?.message || "An unexpected error occurred during Google sign-in.",
+          title: "Sign-In Notice",
+          message: authErr?.message || "Popup sign-in did not complete. Click the button below to try full page sign-in.",
           code: authErr?.code,
         });
       }
+    } finally {
+      setIsSigningIn(false);
+    }
+  };
+
+  const handleForceRedirect = async () => {
+    if (!auth) return;
+    setIsSigningIn(true);
+    try {
+      await signInWithRedirect(auth, googleProvider);
+    } catch (e) {
+      console.error("Direct redirect failed:", e);
+      setIsSigningIn(false);
     }
   };
 
@@ -256,7 +296,7 @@ export function Navbar() {
                     ) : (
                       <LogIn size={14} />
                     )}
-                    <span>{isSigningIn ? "Redirecting…" : "Sign in"}</span>
+                    <span>{isSigningIn ? "Connecting…" : "Sign in"}</span>
                   </button>
                 </div>
               )
@@ -289,7 +329,7 @@ export function Navbar() {
                   ) : (
                     <LogIn size={13} />
                   )}
-                  <span>{isSigningIn ? "Redirecting…" : "Sign in"}</span>
+                  <span>{isSigningIn ? "Connecting…" : "Sign in"}</span>
                 </button>
               )
             ) : null}
@@ -378,7 +418,7 @@ export function Navbar() {
                       ) : (
                         <LogIn size={15} />
                       )}
-                      <span>{isSigningIn ? "Redirecting to Google…" : "Sign in with Google"}</span>
+                      <span>{isSigningIn ? "Connecting with Google…" : "Sign in with Google"}</span>
                     </button>
                   </div>
                 )
@@ -429,6 +469,16 @@ export function Navbar() {
               <div className="space-y-1">
                 <p className="font-bold text-amber-300">{authError.title}</p>
                 <p className="text-amber-200/90 leading-relaxed">{authError.message}</p>
+                <div className="pt-1 flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleForceRedirect}
+                    className="inline-flex items-center gap-1 font-semibold text-cyan-300 bg-cyan-950/80 border border-cyan-500/40 px-2.5 py-1 rounded-lg hover:bg-cyan-900/80 transition cursor-pointer"
+                  >
+                    <ExternalLink size={12} />
+                    Try Full-Page Google Sign-In
+                  </button>
+                </div>
               </div>
             </div>
             <button

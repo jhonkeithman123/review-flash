@@ -9,13 +9,13 @@ import {
 import { getFirestore, Firestore } from "firebase/firestore";
 
 const firebaseConfig = {
-  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
+  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || "AIzaSyD5BOnegAqwK-BuSunAOyqeaybJFjKw-wk",
   authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN || "review-flash.firebaseapp.com",
   projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || "review-flash",
-  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
-  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
-  measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID,
+  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET || "review-flash.firebasestorage.app",
+  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || "343016178947",
+  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID || "1:343016178947:web:b69ce961ad1343e3235536",
+  measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID || "G-RFWN6LNB7E",
 };
 
 export const isFirebaseConfigured = Boolean(
