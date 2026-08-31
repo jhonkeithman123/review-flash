@@ -1,16 +1,17 @@
 import { DitroyClient, HealthStatus } from "@131fgh/ditroy-client";
 
+
 /**
  * Universal DITroy AI client instance for Review Flash.
- * Connects to the DITroy AI backend (defaults to http://localhost:8000 or NEXT_PUBLIC_DITROY_API_URL).
+ * Connects to the cloud DITroy AI backend on Render (https://ditroy.onrender.com) or local override.
  */
 export const ditroyClient = new DitroyClient({
   baseUrl:
     process.env.NEXT_PUBLIC_DITROY_API_URL ||
-    process.env.DITROY_API_URL ||
-    "http://localhost:8000",
-  timeoutMs: 60000,
+    process.env.DITROY_API_URL,
+  timeoutMs: 90000,
 });
+
 
 export interface GeneratedFlashcard {
   question: string;
