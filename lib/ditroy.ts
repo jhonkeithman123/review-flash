@@ -1,14 +1,25 @@
 import { DitroyClient, HealthStatus } from "@131fgh/ditroy-client";
 
+export const DITROY_RENDER_URL = "https://ditroy.onrender.com";
+
+/**
+ * Resolves the active DITroy API endpoint.
+ * Auto-corrects typo 'ditroy-ai.onrender.com' to 'ditroy.onrender.com'.
+ */
+export function getResolvedDitroyUrl(): string {
+  const envUrl = process.env.NEXT_PUBLIC_DITROY_API_URL || process.env.DITROY_API_URL;
+  if (!envUrl || envUrl.trim() === "" || envUrl.includes("ditroy-ai.onrender.com")) {
+    return DITROY_RENDER_URL;
+  }
+  return envUrl.trim();
+}
 
 /**
  * Universal DITroy AI client instance for Review Flash.
- * Connects to the cloud DITroy AI backend on Render (https://ditroy.onrender.com) or local override.
+ * Connects to the cloud DITroy AI backend on Render (https://ditroy.onrender.com) or custom override.
  */
 export const ditroyClient = new DitroyClient({
-  baseUrl:
-    process.env.NEXT_PUBLIC_DITROY_API_URL ||
-    process.env.DITROY_API_URL,
+  baseUrl: getResolvedDitroyUrl(),
   timeoutMs: 90000,
 });
 

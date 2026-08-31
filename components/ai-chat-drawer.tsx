@@ -215,10 +215,11 @@ export function AiChatDrawer() {
       const errorMsg: ChatMessage = {
         id: "ai-err-" + Date.now(),
         role: "assistant",
-        content: `⚠️ **Connection Error:** ${err?.message || "Failed to contact DITroy AI backend."}\n\nMake sure your DITroy server is running at \`http://localhost:8000\`.`,
+        content: `⚠️ **Connection Error:** ${err?.message || "Failed to reach DITroy AI backend."}\n\nBackend URL: \`https://ditroy.onrender.com\` (If this is the first request after being idle, Render may take ~30s to wake up).`,
         timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
       };
       setMessages((prev) => [...prev, errorMsg]);
+
     } finally {
       setLoading(false);
     }
