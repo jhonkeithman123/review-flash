@@ -30,6 +30,8 @@ import {
   loadUserAiConversationsFromFirebase,
   StoredAiConversation,
 } from "@/lib/ditroy";
+import { AiMarkdownRenderer } from "./ai-markdown-renderer";
+
 
 export interface ChatMessage {
   id: string;
@@ -518,20 +520,25 @@ export function AiChatDrawer() {
                   )}
 
                   <div
-                    className={`group relative max-w-[85%] rounded-2xl px-3.5 py-2.5 shadow-sm leading-relaxed ${
+                    className={`group relative max-w-[90%] sm:max-w-[88%] rounded-2xl px-4 py-3 shadow-sm leading-relaxed ${
                       msg.role === "user"
                         ? "bg-gradient-to-r from-cyan-600 to-indigo-600 text-white rounded-br-none"
-                        : "bg-slate-800/90 text-slate-200 border border-slate-700/60 rounded-bl-none"
+                        : "bg-slate-900/90 text-slate-200 border border-slate-700/60 rounded-bl-none shadow-lg shadow-black/20"
                     }`}
                   >
                     {/* Context preview snippet for user queries */}
                     {msg.cardContext?.question && (
-                      <div className="mb-2 rounded bg-black/20 px-2 py-1 text-[11px] text-cyan-200 border border-cyan-400/20 truncate">
+                      <div className="mb-2.5 rounded-lg bg-black/30 px-2.5 py-1 text-[11px] text-cyan-200 border border-cyan-400/20 truncate font-medium">
                         📌 Card: {msg.cardContext.question}
                       </div>
                     )}
 
-                    <div className="whitespace-pre-wrap break-words">{msg.content}</div>
+                    {msg.role === "assistant" ? (
+                      <AiMarkdownRenderer content={msg.content} />
+                    ) : (
+                      <div className="whitespace-pre-wrap break-words text-xs">{msg.content}</div>
+                    )}
+
 
                     <div className="mt-1 flex items-center justify-between text-[10px] opacity-70">
                       <span>{msg.timestamp}</span>
