@@ -5,9 +5,23 @@ import { AiChatDrawer } from "@/components/ai-chat-drawer";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "ReviewFlash",
-  description: "Flashcard review and quiz app built with Next.js",
+  title: "ReviewFlash — Active Recall Flashcards & AI Tutor",
+  description: "Master anything faster with AI-powered flashcards, spaced repetition, and DITroy study tutor.",
+  icons: {
+    icon: [
+      { url: "/favicon.ico" },
+      { url: "/favicon.png", type: "image/png" },
+    ],
+    apple: "/favicon.png",
+    shortcut: "/favicon.ico",
+  },
+  openGraph: {
+    title: "ReviewFlash — AI Active Recall Flashcards",
+    description: "Create, review, test, and collaborate on study flashcard decks.",
+    images: [{ url: "/splash.png", width: 1024, height: 1024, alt: "ReviewFlash" }],
+  },
 };
+
 
 export default function RootLayout({
   children,

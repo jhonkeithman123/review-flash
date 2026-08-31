@@ -183,13 +183,18 @@ export function Navbar() {
               href="/"
               className="flex items-center gap-2.5 text-base font-bold text-white group"
             >
-              <span className="inline-flex h-8 w-8 items-center justify-center rounded-xl bg-cyan-500/20 text-cyan-300 ring-1 ring-cyan-400/40 group-hover:scale-105 transition">
-                <BrainCircuit size={18} />
-              </span>
+              <div className="relative h-8 w-8 overflow-hidden rounded-xl bg-slate-900 border border-cyan-500/30 p-0.5 group-hover:scale-105 group-hover:border-cyan-400 transition shadow-md shadow-cyan-500/15 flex items-center justify-center">
+                <img
+                  src="/favicon.png"
+                  alt="ReviewFlash Logo"
+                  className="h-full w-full object-contain rounded-lg"
+                />
+              </div>
               <span className="tracking-tight hidden sm:inline text-white font-extrabold">
                 ReviewFlash
               </span>
             </Link>
+
 
             <Link
               href="/updates"

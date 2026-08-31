@@ -183,12 +183,17 @@ export function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
 
         {/* Brand / Title Header */}
         <div className="text-center mb-6">
-          <div className="mx-auto mb-3 inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-cyan-500/20 text-cyan-300 ring-1 ring-cyan-400/40 shadow-lg shadow-cyan-500/10">
-            <BrainCircuit size={26} />
+          <div className="mx-auto mb-3 inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-900 border border-cyan-500/40 p-1.5 shadow-xl shadow-cyan-500/20 overflow-hidden">
+            <img
+              src="/favicon.png"
+              alt="ReviewFlash Logo"
+              className="h-full w-full object-contain rounded-xl"
+            />
           </div>
           <h2 className="text-2xl font-bold text-white tracking-tight">
             {tab === "signin" ? "Welcome Back" : "Create an Account"}
           </h2>
+
           <p className="mt-1 text-xs text-slate-400">
             {tab === "signin"
               ? "Sign in to sync your study sets and collaborate across devices"

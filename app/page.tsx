@@ -58,47 +58,68 @@ export default function HomePage() {
     <div className="space-y-12 py-6">
       {/* Hero Section */}
       <section className="relative overflow-hidden rounded-4xl border border-slate-800 bg-linear-to-br from-slate-900 via-slate-950 to-slate-900 p-8 sm:p-12 shadow-2xl shadow-slate-950/40">
-        <div className="absolute top-0 right-0 -mt-10 -mr-10 h-64 w-64 rounded-full bg-cyan-500/10 blur-3xl pointer-events-none" />
+        <div className="absolute top-0 right-0 -mt-10 -mr-10 h-80 w-80 rounded-full bg-cyan-500/15 blur-3xl pointer-events-none" />
+        <div className="absolute bottom-0 right-1/4 h-64 w-64 rounded-full bg-indigo-500/10 blur-3xl pointer-events-none" />
 
-        <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.28em] text-cyan-300">
-          <Sparkles size={14} className="text-cyan-400" />
-          Next-Gen Study System
-        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center relative z-10">
+          {/* Left: Headline & Actions */}
+          <div className="lg:col-span-7 space-y-6">
+            <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.28em] text-cyan-300">
+              <Sparkles size={14} className="text-cyan-400 animate-pulse" />
+              <span>Next-Gen Active Recall Study System</span>
+            </div>
 
-        <h1 className="mt-4 max-w-2xl text-4xl font-extrabold tracking-tight text-white sm:text-6xl leading-[1.1]">
-          Learn faster. <br className="hidden sm:inline" />
-          <span className="bg-linear-to-r from-cyan-400 via-teal-300 to-indigo-400 bg-clip-text text-transparent">
-            Share study decks.
-          </span>
-        </h1>
+            <h1 className="text-4xl font-extrabold tracking-tight text-white sm:text-6xl leading-[1.1]">
+              Learn faster. <br className="hidden sm:inline" />
+              <span className="bg-linear-to-r from-cyan-400 via-teal-300 to-indigo-400 bg-clip-text text-transparent">
+                Share study decks.
+              </span>
+            </h1>
 
-        <p className="mt-6 max-w-xl text-base sm:text-lg text-slate-300 leading-relaxed">
-          Create flashcard sets in seconds with rapid paste &amp; sticky tags, share with peers via share codes, and practice with active recall and quiz testing.
-        </p>
+            <p className="max-w-xl text-base sm:text-lg text-slate-300 leading-relaxed">
+              Create flashcard sets in seconds with dual-engine AI auto-detect, share with peers via 6-character codes, and master concepts with active recall, spaced repetition, and DITroy AI Tutor.
+            </p>
 
-        <div className="mt-8 flex flex-wrap gap-3">
-          <Link
-            href="/review"
-            className="inline-flex items-center gap-2 rounded-full bg-cyan-500 px-6 py-3.5 text-sm font-bold text-slate-950 shadow-lg shadow-cyan-500/25 transition hover:bg-cyan-400"
-          >
-            Start Reviewing <ArrowRight size={18} />
-          </Link>
-          <Link
-            href="/create"
-            className="inline-flex items-center gap-2 rounded-full border border-slate-700 bg-slate-900/80 px-6 py-3.5 text-sm font-semibold text-slate-100 transition hover:border-slate-500 hover:bg-slate-900"
-          >
-            <PlusCircle size={18} className="text-cyan-400" />
-            Fast Create Deck
-          </Link>
-          <Link
-            href="/decks"
-            className="inline-flex items-center gap-2 rounded-full border border-slate-700 bg-slate-900/80 px-6 py-3.5 text-sm font-semibold text-slate-100 transition hover:border-slate-500 hover:bg-slate-900"
-          >
-            <FolderKanban size={18} className="text-indigo-400" />
-            Browse Decks
-          </Link>
+            <div className="flex flex-wrap gap-3 pt-2">
+              <Link
+                href="/review"
+                className="inline-flex items-center gap-2 rounded-full bg-cyan-500 px-6 py-3.5 text-sm font-bold text-slate-950 shadow-lg shadow-cyan-500/25 transition hover:bg-cyan-400 cursor-pointer"
+              >
+                Start Reviewing <ArrowRight size={18} />
+              </Link>
+              <Link
+                href="/create"
+                className="inline-flex items-center gap-2 rounded-full border border-slate-700 bg-slate-900/80 px-6 py-3.5 text-sm font-semibold text-slate-100 transition hover:border-slate-500 hover:bg-slate-900 cursor-pointer"
+              >
+                <PlusCircle size={18} className="text-cyan-400" />
+                Fast Create Deck
+              </Link>
+              <Link
+                href="/decks"
+                className="inline-flex items-center gap-2 rounded-full border border-slate-700 bg-slate-900/80 px-6 py-3.5 text-sm font-semibold text-slate-100 transition hover:border-slate-500 hover:bg-slate-900 cursor-pointer"
+              >
+                <FolderKanban size={18} className="text-indigo-400" />
+                Browse Decks
+              </Link>
+            </div>
+          </div>
+
+          {/* Right: Glowing 3D Brand Card Graphic */}
+          <div className="lg:col-span-5 flex items-center justify-center">
+            <div className="relative group max-w-[280px] sm:max-w-[340px]">
+              <div className="absolute -inset-1.5 rounded-3xl bg-gradient-to-r from-cyan-500 via-indigo-500 to-purple-500 opacity-40 blur-xl group-hover:opacity-75 transition duration-500 animate-pulse" />
+              <div className="relative rounded-3xl border border-cyan-500/40 bg-slate-900/90 p-3 shadow-2xl backdrop-blur-xl">
+                <img
+                  src="/splash.png"
+                  alt="ReviewFlash 3D Study Cards"
+                  className="w-full h-auto rounded-2xl object-cover transform group-hover:scale-[1.03] transition duration-300"
+                />
+              </div>
+            </div>
+          </div>
         </div>
       </section>
+
 
       {/* Feature Grid */}
       <section className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
