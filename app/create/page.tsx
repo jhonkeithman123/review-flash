@@ -6,6 +6,7 @@ import {
   AlertTriangle,
   ArrowRight,
   BookOpen,
+  Bot,
   Check,
   ClipboardPaste,
   Crown,
@@ -14,6 +15,7 @@ import {
   HelpCircle,
   Layers,
   ListOrdered,
+  Loader2,
   Lock,
   Plus,
   RotateCcw,
@@ -26,6 +28,7 @@ import {
   Type,
   Unlock,
   Users,
+  Wand2,
   Zap,
 } from "lucide-react";
 import { AuthorizedCollaborator, Deck, DeckPermissionRole, Flashcard, UserDeckRole } from "@/types/flashcard";
@@ -40,9 +43,13 @@ import {
   getUserDeckRole,
   updateDeck,
 } from "@/lib/flashcardService";
+import { generateFlashcardsWithAI, smartAutoDetectWithAI } from "@/lib/ditroy";
 import { ShareDeckModal } from "@/components/share-deck-modal";
+import { HelpGuideModal, SAMPLE_FORMATS } from "@/components/help-guide-modal";
 
-interface StagedCard {
+
+
+export interface StagedCard {
   tempId: string;
   question: string;
   answer: string;
@@ -63,13 +70,8 @@ function convertHtmlToMarkdownBold(html: string): string {
     boldElements.forEach((el) => {
       const text = el.textContent?.trim();
       if (text) {
-        el.replaceWith(` **${text}** `);
+        el.textContent = `**${text}**`;
       }
-    });
-
-    doc.querySelectorAll("br").forEach((br) => br.replaceWith("\n"));
-    doc.querySelectorAll("p, div, li, tr").forEach((p) => {
-      p.append("\n");
     });
 
     return doc.body.textContent || "";
@@ -79,13 +81,13 @@ function convertHtmlToMarkdownBold(html: string): string {
 }
 
 // Universal parser supporting Numbered Reviewers, Multi-line Questions, Bold answers, Q/A, and Delimiters
-function parseTextToCards(
+export function parseTextToCards(
   rawText: string,
-  mode: "auto" | "numbered" | "bold-answer" | "bold-question" | "delimiter",
-  delimiter: "auto" | "tab" | "dash" | "colon" | "semicolon",
-  clozeStyle: "blank" | "clean",
-  stripNumbers: boolean,
-  activeTags: string[]
+  mode: "auto" | "numbered" | "bold-answer" | "bold-question" | "delimiter" = "auto",
+  delimiter: "auto" | "tab" | "dash" | "colon" | "semicolon" = "auto",
+  clozeStyle: "blank" | "clean" = "blank",
+  stripNumbers: boolean = true,
+  activeTags: string[] = ["General"]
 ): StagedCard[] {
   const normalized = rawText.replace(/\r\n/g, "\n").trim();
   if (!normalized) return [];
@@ -440,15 +442,30 @@ function CreateContent() {
   const [activeDeckRole, setActiveDeckRole] = useState<UserDeckRole>("owner");
   const [activeDeckAuthorName, setActiveDeckAuthorName] = useState<string>("");
 
-  // Active Input Mode: 'rapid' or 'bulk'
-  const [inputTab, setInputTab] = useState<"rapid" | "bulk">("bulk");
+  // Active Input Mode: 'bulk', 'ai', or 'rapid'
+  const [inputTab, setInputTab] = useState<"bulk" | "ai" | "rapid">("bulk");
+
+  // DITroy AI Generator State
+  const [aiTopic, setAiTopic] = useState("");
+  const [aiNotes, setAiNotes] = useState("");
+  const [aiCardCount, setAiCardCount] = useState<number>(5);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiGeneratedCards, setAiGeneratedCards] = useState<StagedCard[]>([]);
+  const [isAiParsingBulk, setIsAiParsingBulk] = useState(false);
+
+  // Dual Smart Detection Engine State: "native" (hardcoded/regex) vs "ai" (DITroy AI)
+  const [smartDetectionEngine, setSmartDetectionEngine] = useState<"native" | "ai">("native");
+  const [aiDetectSubMode, setAiDetectSubMode] = useState<"detect-qa" | "from-context">("from-context");
+  const [aiDetectCardCount, setAiDetectCardCount] = useState<number>(5);
+  const [aiDetectedCards, setAiDetectedCards] = useState<StagedCard[]>([]);
+  const [isAiDetecting, setIsAiDetecting] = useState(false);
 
   // Rapid Entry State
   const [rapidQuestion, setRapidQuestion] = useState("");
   const [rapidAnswer, setRapidAnswer] = useState("");
   const questionInputRef = useRef<HTMLTextAreaElement>(null);
 
-  // Smart Parser State
+  // Smart Parser State (Native)
   const [bulkText, setBulkText] = useState("");
   const [parserMode, setParserMode] = useState<"auto" | "numbered" | "bold-answer" | "bold-question" | "delimiter">("auto");
   const [bulkDelimiter, setBulkDelimiter] = useState<"auto" | "tab" | "dash" | "colon" | "semicolon">("auto");
@@ -463,14 +480,59 @@ function CreateContent() {
   const [editQuestion, setEditQuestion] = useState("");
   const [editAnswer, setEditAnswer] = useState("");
 
-  // Save / Share state
+  // Save / Share / Help state
   const [isSaving, setIsSaving] = useState(false);
   const [savedDeck, setSavedDeck] = useState<Deck | null>(null);
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+  const [isHelpModalOpen, setIsHelpModalOpen] = useState(false);
   const [statusMessage, setStatusMessage] = useState<{
     type: "success" | "error" | "info";
     text: string;
   } | null>(null);
+
+  // Template loader from URL query params (e.g. ?template=numbered)
+  const templateParam = searchParams.get("template");
+  useEffect(() => {
+    if (templateParam) {
+      const match = SAMPLE_FORMATS.find((f) => f.id === templateParam);
+      if (match) {
+        setBulkText(match.sample);
+        setInputTab("bulk");
+        if (match.engine === "ai") {
+          setSmartDetectionEngine("ai");
+          if (match.id === "ai-detect") {
+            setAiDetectSubMode("detect-qa");
+          } else {
+            setAiDetectSubMode("from-context");
+          }
+        } else {
+          setSmartDetectionEngine("native");
+          if (match.id === "numbered") setParserMode("numbered");
+          else if (match.id === "bold") setParserMode("bold-answer");
+          else if (match.id === "delimiter") setParserMode("delimiter");
+        }
+        setStatusMessage({
+          type: "info",
+          text: `📋 Loaded "${match.title}" template into the studio. Customize or click stage!`,
+        });
+      }
+    }
+  }, [templateParam]);
+
+  const handleInsertSample = (sampleText: string, suggestedMode?: string) => {
+    setBulkText(sampleText);
+    setInputTab("bulk");
+    if (suggestedMode === "ai") {
+      setSmartDetectionEngine("ai");
+    } else {
+      setSmartDetectionEngine("native");
+    }
+    setStatusMessage({
+      type: "info",
+      text: "📋 Loaded sample template into editor! Ready to detect or stage.",
+    });
+  };
+
 
   // Load existing decks if user wants to add or edit an existing deck
   useEffect(() => {
@@ -685,6 +747,199 @@ function CreateContent() {
       text: `🎉 Successfully parsed and staged ${liveParsedPreview.length} flashcards! Adjust their difficulties below.`,
     });
   };
+
+  // Generate flashcards from topic or notes using DITroy AI
+  const handleGenerateWithAI = async () => {
+    const content = (aiNotes || aiTopic).trim();
+    if (!content) {
+      setStatusMessage({
+        type: "error",
+        text: "Please enter a topic or paste study notes for the AI.",
+      });
+      return;
+    }
+
+    setAiLoading(true);
+    setStatusMessage({
+      type: "info",
+      text: "✨ DITroy AI is analyzing content and generating flashcards...",
+    });
+
+    try {
+      const result = await generateFlashcardsWithAI(content, {
+        topic: aiTopic.trim() || undefined,
+        cardCount: aiCardCount,
+        tags: getParsedSetTags(),
+      });
+
+      if (result.cards.length > 0) {
+        const staged: StagedCard[] = result.cards.map((c, i) => ({
+          tempId: "staged-ai-" + Date.now() + "-" + i,
+          question: c.question,
+          answer: c.answer,
+          tags: c.tags && c.tags.length > 0 ? c.tags : getParsedSetTags(),
+          difficulty: c.difficulty || 3,
+        }));
+        setAiGeneratedCards(staged);
+        setStatusMessage({
+          type: "success",
+          text: `✨ DITroy AI successfully generated ${staged.length} high-yield flashcards! Review them below and click "Add to Deck".`,
+        });
+      } else {
+        setStatusMessage({
+          type: "error",
+          text: result.error || "AI could not generate flashcards. Make sure the DITroy backend is running at http://localhost:8000.",
+        });
+      }
+    } catch (err: any) {
+      setStatusMessage({
+        type: "error",
+        text: err?.message || "Failed to generate cards with DITroy AI.",
+      });
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
+  const handleApplyAiGeneratedCards = () => {
+    if (aiGeneratedCards.length === 0) return;
+    setStagedCards((prev) => [...prev, ...aiGeneratedCards]);
+    setAiGeneratedCards([]);
+    setStatusMessage({
+      type: "success",
+      text: `🎉 Added ${aiGeneratedCards.length} AI-generated flashcards to your deck staging queue!`,
+    });
+  };
+
+  const handleAiParseBulkText = async () => {
+    if (!bulkText.trim()) {
+      setStatusMessage({
+        type: "error",
+        text: "Please paste your raw notes into the box first.",
+      });
+      return;
+    }
+
+    setIsAiParsingBulk(true);
+    setStatusMessage({
+      type: "info",
+      text: "🤖 DITroy AI is extracting structured Q&A pairs from your raw notes...",
+    });
+
+    try {
+      const result = await generateFlashcardsWithAI(bulkText, {
+        cardCount: 10,
+        tags: getParsedSetTags(),
+      });
+
+      if (result.cards.length > 0) {
+        const staged: StagedCard[] = result.cards.map((c, i) => ({
+          tempId: "staged-aiparse-" + Date.now() + "-" + i,
+          question: c.question,
+          answer: c.answer,
+          tags: c.tags && c.tags.length > 0 ? c.tags : getParsedSetTags(),
+          difficulty: c.difficulty || 3,
+        }));
+        setStagedCards((prev) => [...prev, ...staged]);
+        setBulkText("");
+        setStatusMessage({
+          type: "success",
+          text: `🎉 DITroy AI extracted and staged ${staged.length} flashcards from your text!`,
+        });
+      } else {
+        setStatusMessage({
+          type: "error",
+          text: result.error || "Could not parse cards with AI.",
+        });
+      }
+    } catch (err: any) {
+      setStatusMessage({
+        type: "error",
+        text: err?.message || "DITroy AI parser failed. Check backend connection.",
+      });
+    } finally {
+      setIsAiParsingBulk(false);
+    }
+  };
+
+  // Run DITroy AI Smart Detect (Dual Mode: Detect Q&A or Synthesize from Context)
+  const handleRunAiSmartDetect = async () => {
+    if (!bulkText.trim()) {
+      setStatusMessage({
+        type: "error",
+        text: "Please paste your text, notes, or context into the box first.",
+      });
+      return;
+    }
+
+    setIsAiDetecting(true);
+    setStatusMessage({
+      type: "info",
+      text:
+        aiDetectSubMode === "detect-qa"
+          ? "🤖 DITroy AI is detecting and separating Question & Answer pairs from your text..."
+          : "✨ DITroy AI is reading context and synthesizing high-yield flashcard Q&A...",
+    });
+
+    try {
+      const result = await smartAutoDetectWithAI(bulkText, aiDetectSubMode, {
+        topic: deckTitle.trim() || undefined,
+        cardCount: aiDetectCardCount,
+        tags: getParsedSetTags(),
+      });
+
+      if (result.cards.length > 0) {
+        const staged: StagedCard[] = result.cards.map((c, i) => ({
+          tempId: "staged-aidetect-" + Date.now() + "-" + i,
+          question: c.question,
+          answer: c.answer,
+          tags: c.tags && c.tags.length > 0 ? c.tags : getParsedSetTags(),
+          difficulty: c.difficulty || 3,
+        }));
+        setAiDetectedCards(staged);
+        setStatusMessage({
+          type: "success",
+          text: `🎉 DITroy AI ${
+            aiDetectSubMode === "detect-qa" ? "detected and extracted" : "generated"
+          } ${staged.length} flashcards! Review them below and click "Stage All Cards".`,
+        });
+      } else {
+        setStatusMessage({
+          type: "error",
+          text: result.error || "AI could not detect flashcards. Check connection or try another format.",
+        });
+      }
+    } catch (err: any) {
+      setStatusMessage({
+        type: "error",
+        text: err?.message || "Failed to reach DITroy AI service.",
+      });
+    } finally {
+      setIsAiDetecting(false);
+    }
+  };
+
+  const handleApplyAiDetectedCards = () => {
+    if (aiDetectedCards.length === 0) return;
+    setStagedCards((prev) => [...prev, ...aiDetectedCards]);
+    setAiDetectedCards([]);
+    setBulkText("");
+    setStatusMessage({
+      type: "success",
+      text: `🎉 Successfully staged ${aiDetectedCards.length} AI-detected flashcards!`,
+    });
+  };
+
+  const handleAiDetectedDifficultyChange = (tempId: string, level: number) => {
+    setAiDetectedCards((prev) =>
+      prev.map((c) => (c.tempId === tempId ? { ...c, difficulty: level } : c))
+    );
+  };
+
+  const handleDeleteAiDetectedCard = (tempId: string) => {
+    setAiDetectedCards((prev) => prev.filter((c) => c.tempId !== tempId));
+  };
+
 
   // Batch difficulty settings
   const handleSetAllDifficulty = (level: number) => {
@@ -1282,141 +1537,632 @@ function CreateContent() {
             <h2 className="text-base font-semibold text-white">Smart Paste (Reviewer / Bold / QA)</h2>
           </div>
 
-          <div className="flex rounded-xl border border-slate-800 bg-slate-950 p-1">
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Guide & FAQ Trigger Button */}
             <button
               type="button"
-              onClick={() => setInputTab("bulk")}
-              className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition cursor-pointer ${inputTab === "bulk"
-                  ? "bg-cyan-500 text-slate-950 shadow-sm"
-                  : "text-slate-400 hover:text-white"
-                }`}
+              onClick={() => setIsHelpModalOpen(true)}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-cyan-500/40 bg-cyan-500/10 px-3 py-1.5 text-xs font-bold text-cyan-300 hover:bg-cyan-500/20 hover:border-cyan-400 transition cursor-pointer"
             >
-              <Sparkles size={14} />
-              Universal Raw Text Parser
+              <HelpCircle size={14} className="text-cyan-400" />
+              <span>Guide &amp; FAQs 💡</span>
             </button>
-            <button
-              type="button"
-              onClick={() => setInputTab("rapid")}
-              className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition cursor-pointer ${inputTab === "rapid"
-                  ? "bg-cyan-500 text-slate-950 shadow-sm"
-                  : "text-slate-400 hover:text-white"
+
+            <div className="flex rounded-xl border border-slate-800 bg-slate-950 p-1">
+              <button
+                type="button"
+                onClick={() => setInputTab("bulk")}
+                className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition cursor-pointer ${
+                  inputTab === "bulk"
+                    ? "bg-cyan-500 text-slate-950 shadow-sm font-bold"
+                    : "text-slate-400 hover:text-white"
                 }`}
-            >
-              <Zap size={14} />
-              Manual Single Q&amp;A
-            </button>
+              >
+                <Sparkles size={14} />
+                Universal Raw Text Parser
+              </button>
+              <button
+                type="button"
+                onClick={() => setInputTab("ai")}
+                className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition cursor-pointer ${
+                  inputTab === "ai"
+                    ? "bg-gradient-to-r from-indigo-500 to-cyan-500 text-white shadow-sm font-bold"
+                    : "text-indigo-300 hover:text-white"
+                }`}
+              >
+                <Wand2 size={14} className="text-amber-300 animate-pulse" />
+                ✨ DITroy AI Generator
+              </button>
+              <button
+                type="button"
+                onClick={() => setInputTab("rapid")}
+                className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition cursor-pointer ${
+                  inputTab === "rapid"
+                    ? "bg-cyan-500 text-slate-950 shadow-sm font-bold"
+                    : "text-slate-400 hover:text-white"
+                }`}
+              >
+                <Zap size={14} />
+                Manual Single Q&amp;A
+              </button>
+            </div>
           </div>
         </div>
 
-        {/* TAB 1: UNIVERSAL SMART PARSER */}
+
+        {/* TAB 1: UNIVERSAL SMART PARSER WITH DUAL NATIVE & AI DETECTION MODES */}
         {inputTab === "bulk" && (
-          <div className="space-y-4">
-            {/* Mode Toolbar */}
-            <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-800 bg-slate-950/70 p-3">
-              <div className="flex flex-wrap items-center gap-2 text-xs">
-                <span className="font-semibold text-slate-300">Format Strategy:</span>
-                <button
-                  type="button"
-                  onClick={() => setParserMode("auto")}
-                  className={`rounded-lg px-2.5 py-1 text-xs font-medium transition cursor-pointer ${parserMode === "auto"
-                      ? "bg-cyan-500 text-slate-950 font-bold shadow-sm"
-                      : "text-slate-300 hover:text-white border border-slate-800"
+          <div className="space-y-5">
+            {/* Primary Engine Selector: Native vs AI Smart Detect */}
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-800 bg-slate-950 p-2.5 shadow-sm">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-slate-300 uppercase tracking-wider pl-1">
+                  Detection Engine:
+                </span>
+                <div className="flex items-center rounded-xl bg-slate-900 p-1 border border-slate-800">
+                  <button
+                    type="button"
+                    onClick={() => setSmartDetectionEngine("native")}
+                    className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold transition cursor-pointer ${
+                      smartDetectionEngine === "native"
+                        ? "bg-cyan-500 text-slate-950 shadow-sm"
+                        : "text-slate-400 hover:text-slate-200"
                     }`}
-                >
-                  🌟 Smart Auto-Detect
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setParserMode("numbered")}
-                  className={`rounded-lg px-2.5 py-1 text-xs font-medium transition cursor-pointer ${parserMode === "numbered"
-                      ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/40"
-                      : "text-slate-400 hover:text-slate-200 border border-slate-800"
+                  >
+                    <Zap size={14} className={smartDetectionEngine === "native" ? "text-slate-950" : "text-cyan-400"} />
+                    ⚡ Native Smart Auto-Detect
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSmartDetectionEngine("ai")}
+                    className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold transition cursor-pointer ${
+                      smartDetectionEngine === "ai"
+                        ? "bg-gradient-to-r from-indigo-500 to-cyan-500 text-white shadow-sm"
+                        : "text-indigo-300 hover:text-white"
                     }`}
-                >
-                  <span className="flex items-center gap-1">
-                    <ListOrdered size={13} />
-                    1. Question... Answer
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setParserMode("bold-answer")}
-                  className={`rounded-lg px-2.5 py-1 text-xs font-medium transition cursor-pointer ${parserMode === "bold-answer"
-                      ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/40"
-                      : "text-slate-400 hover:text-slate-200 border border-slate-800"
-                    }`}
-                >
-                  ✨ Bold = Answer
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setParserMode("delimiter")}
-                  className={`rounded-lg px-2.5 py-1 text-xs font-medium transition cursor-pointer ${parserMode === "delimiter"
-                      ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/40"
-                      : "text-slate-400 hover:text-slate-200 border border-slate-800"
-                    }`}
-                >
-                  ⚡ Tab / Dash / Colon
-                </button>
+                  >
+                    <Bot size={14} className="text-amber-300 animate-pulse" />
+                    🤖 DITroy AI Smart Detect
+                  </button>
+                </div>
               </div>
 
-              {/* Extra toggles */}
-              <div className="flex items-center gap-3 text-xs">
-                <label className="flex items-center gap-1.5 cursor-pointer text-slate-300 hover:text-white select-none">
-                  <input
-                    type="checkbox"
-                    checked={stripNumbers}
-                    onChange={(e) => setStripNumbers(e.target.checked)}
-                    className="rounded border-slate-700 accent-cyan-500"
-                  />
-                  <span>Clean Question Numbers (e.g. &quot;1.&quot;)</span>
-                </label>
-              </div>
+              <span className="text-[11px] text-slate-400 font-medium pr-1">
+                {smartDetectionEngine === "native"
+                  ? "⚡ Client-side instant regex parser (zero latency)"
+                  : "✨ Cloud AI detects Q&A or generates from raw context"}
+              </span>
             </div>
 
-            {/* Smart Textarea with Rich Paste Listener */}
-            <div className="relative">
-              <textarea
-                value={bulkText}
-                onChange={(e) => setBulkText(e.target.value)}
-                onPaste={handleSmartTextPaste}
-                rows={9}
-                placeholder={`Paste your questions & answers in any format!\n\nExample 1 (Numbered Reviewer):\n1. What is the common color for the USB 3.0 connector for Standard A receptacles and plugs?\nBlue\n2. What type of memory used in the Solid State Drive (SSD) as storage?\nFlash memory\n3. Where is BIOS stored originally in a standard PC?\nRead Only Memory (ROM)\n\nExample 2 (Bold answers):\n• The **mitochondria** is the powerhouse of the cell.`}
-                className="w-full font-mono text-xs leading-relaxed rounded-2xl border border-slate-700 bg-slate-950 p-4 text-slate-100 placeholder:text-slate-600 outline-none focus:border-cyan-400"
-              />
-            </div>
-
-            {/* Live Detected Preview Box */}
-            {liveParsedPreview.length > 0 && (
-              <div className="rounded-2xl border border-cyan-500/30 bg-cyan-500/5 p-4 space-y-3 animate-in fade-in duration-150">
-                <div className="flex items-center justify-between border-b border-cyan-500/20 pb-2">
-                  <div className="flex items-center gap-2">
-                    <Sparkles size={16} className="text-cyan-400" />
-                    <h4 className="text-xs font-bold text-cyan-200 uppercase tracking-wider">
-                      Live Detected Cards ({liveParsedPreview.length})
-                    </h4>
+            {/* ENGINE 1: NATIVE SMART AUTO-DETECT CONTROLS */}
+            {smartDetectionEngine === "native" && (
+              <div className="space-y-4 animate-in fade-in duration-150">
+                {/* Mode Toolbar */}
+                <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-800 bg-slate-950/70 p-3">
+                  <div className="flex flex-wrap items-center gap-2 text-xs">
+                    <span className="font-semibold text-slate-300">Format Strategy:</span>
+                    <button
+                      type="button"
+                      onClick={() => setParserMode("auto")}
+                      className={`rounded-lg px-2.5 py-1 text-xs font-medium transition cursor-pointer ${
+                        parserMode === "auto"
+                          ? "bg-cyan-500 text-slate-950 font-bold shadow-sm"
+                          : "text-slate-300 hover:text-white border border-slate-800"
+                      }`}
+                    >
+                      🌟 Native Smart Auto-Detect
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setParserMode("numbered")}
+                      className={`rounded-lg px-2.5 py-1 text-xs font-medium transition cursor-pointer ${
+                        parserMode === "numbered"
+                          ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/40"
+                          : "text-slate-400 hover:text-slate-200 border border-slate-800"
+                      }`}
+                    >
+                      <span className="flex items-center gap-1">
+                        <ListOrdered size={13} />
+                        1. Question... Answer
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setParserMode("bold-answer")}
+                      className={`rounded-lg px-2.5 py-1 text-xs font-medium transition cursor-pointer ${
+                        parserMode === "bold-answer"
+                          ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/40"
+                          : "text-slate-400 hover:text-slate-200 border border-slate-800"
+                      }`}
+                    >
+                      ✨ Bold = Answer
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setParserMode("delimiter")}
+                      className={`rounded-lg px-2.5 py-1 text-xs font-medium transition cursor-pointer ${
+                        parserMode === "delimiter"
+                          ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/40"
+                          : "text-slate-400 hover:text-slate-200 border border-slate-800"
+                      }`}
+                    >
+                      ⚡ Tab / Dash / Colon
+                    </button>
                   </div>
+
+                  {/* Extra toggles */}
+                  <div className="flex items-center gap-3 text-xs">
+                    <label className="flex items-center gap-1.5 cursor-pointer text-slate-300 hover:text-white select-none">
+                      <input
+                        type="checkbox"
+                        checked={stripNumbers}
+                        onChange={(e) => setStripNumbers(e.target.checked)}
+                        className="rounded border-slate-700 accent-cyan-500"
+                      />
+                      <span>Clean Question Numbers (e.g. &quot;1.&quot;)</span>
+                    </label>
+                  </div>
+                </div>
+
+                {/* Quick Sample Templates Chips */}
+                <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                  <span className="text-[11px] text-slate-400 font-medium">Quick Insert Sample Template:</span>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {SAMPLE_FORMATS.filter((f) => f.engine === "native").map((f) => (
+                      <button
+                        key={f.id}
+                        type="button"
+                        onClick={() => handleInsertSample(f.sample, f.engine)}
+                        className="rounded-lg border border-slate-800 bg-slate-900/90 px-2.5 py-1 text-[11px] font-medium text-slate-300 hover:border-cyan-500/40 hover:text-cyan-300 transition cursor-pointer"
+                      >
+                        {f.title.replace(/^\d+\.\s*/, "")}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Textarea */}
+                <div className="relative">
+                  <textarea
+                    value={bulkText}
+                    onChange={(e) => setBulkText(e.target.value)}
+                    onPaste={handleSmartTextPaste}
+                    rows={8}
+                    placeholder={`Paste formatted questions & answers here for instant regex detection!\n\nExample 1 (Numbered Reviewer):\n1. What is the common color for the USB 3.0 connector for Standard A receptacles and plugs?\nBlue\n2. What type of memory used in the Solid State Drive (SSD) as storage?\nFlash memory\n\nExample 2 (Bold answers):\n• The **mitochondria** is the powerhouse of the cell.`}
+                    className="w-full font-mono text-xs leading-relaxed rounded-2xl border border-slate-700 bg-slate-950 p-4 text-slate-100 placeholder:text-slate-600 outline-none focus:border-cyan-400"
+                  />
+                </div>
+
+
+                {/* Live Detected Preview Box */}
+                {liveParsedPreview.length > 0 && (
+                  <div className="rounded-2xl border border-cyan-500/30 bg-cyan-500/5 p-4 space-y-3 animate-in fade-in duration-150">
+                    <div className="flex items-center justify-between border-b border-cyan-500/20 pb-2">
+                      <div className="flex items-center gap-2">
+                        <Sparkles size={16} className="text-cyan-400" />
+                        <h4 className="text-xs font-bold text-cyan-200 uppercase tracking-wider">
+                          Live Detected Cards ({liveParsedPreview.length})
+                        </h4>
+                      </div>
+                      <span className="text-[11px] text-slate-400">
+                        Review extracted Question &amp; Answer pairs below:
+                      </span>
+                    </div>
+
+                    <div className="max-h-56 overflow-y-auto space-y-2 pr-1 text-xs">
+                      {liveParsedPreview.map((item, idx) => (
+                        <div
+                          key={idx}
+                          className="rounded-xl border border-slate-800 bg-slate-950/80 p-3 flex flex-col sm:flex-row sm:items-start justify-between gap-3"
+                        >
+                          <div className="flex-1 space-y-1">
+                            <div className="flex items-start gap-1.5">
+                              <span className="font-bold text-cyan-400 shrink-0">Q{idx + 1}:</span>
+                              <span className="text-slate-100 leading-relaxed font-medium">{item.question}</span>
+                            </div>
+                          </div>
+                          <div className="shrink-0 sm:max-w-xs sm:w-1/3 pl-3 sm:border-l border-slate-800/80">
+                            <div className="flex items-start gap-1.5">
+                              <span className="font-bold text-emerald-400 shrink-0">Ans:</span>
+                              <span className="font-semibold text-emerald-300 leading-relaxed">{item.answer}</span>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
+                  <div className="text-xs text-slate-400">
+                    {liveParsedPreview.length > 0
+                      ? `⚡ Ready to stage ${liveParsedPreview.length} flashcards.`
+                      : "Paste your formatted reviewer text above."}
+                  </div>
+
+                  <button
+                    type="button"
+                    disabled={!bulkText.trim() || liveParsedPreview.length === 0}
+                    onClick={handleApplyBulkCards}
+                    className="inline-flex items-center gap-2 rounded-full bg-cyan-500 px-6 py-2.5 text-xs font-bold text-slate-950 hover:bg-cyan-400 transition disabled:opacity-40 cursor-pointer shadow-lg shadow-cyan-500/20"
+                  >
+                    <Plus size={16} />
+                    Stage {liveParsedPreview.length > 0 ? liveParsedPreview.length : ""} Flashcards
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* ENGINE 2: DITROY AI SMART DETECT & CONTEXT SYNTHESIZER */}
+            {smartDetectionEngine === "ai" && (
+              <div className="space-y-4 rounded-2xl border border-indigo-500/30 bg-gradient-to-br from-indigo-950/40 to-slate-950/80 p-5 animate-in fade-in duration-150">
+                {/* AI Sub-mode Selection */}
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <button
+                    type="button"
+                    onClick={() => setAiDetectSubMode("from-context")}
+                    className={`flex items-start gap-3 rounded-2xl border p-3.5 text-left transition cursor-pointer ${
+                      aiDetectSubMode === "from-context"
+                        ? "border-cyan-400/80 bg-cyan-500/15 text-white shadow-md shadow-cyan-500/10"
+                        : "border-slate-800 bg-slate-900/60 text-slate-400 hover:border-slate-700"
+                    }`}
+                  >
+                    <BookOpen size={18} className={aiDetectSubMode === "from-context" ? "text-cyan-400 shrink-0 mt-0.5" : "text-slate-500 shrink-0 mt-0.5"} />
+                    <div>
+                      <div className="font-bold text-xs flex items-center gap-1.5 text-white">
+                        <span>📚 Synthesize Q&amp;A from Context / Raw Notes</span>
+                        {aiDetectSubMode === "from-context" && (
+                          <span className="rounded bg-cyan-500/20 px-1.5 py-0.2 text-[10px] text-cyan-300 font-bold">Active</span>
+                        )}
+                      </div>
+                      <p className="mt-1 text-[11px] text-slate-300 leading-tight">
+                        Paste lecture slides, paragraphs, textbook pages, or study notes. AI crafts new comprehensive questions and answers.
+                      </p>
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setAiDetectSubMode("detect-qa")}
+                    className={`flex items-start gap-3 rounded-2xl border p-3.5 text-left transition cursor-pointer ${
+                      aiDetectSubMode === "detect-qa"
+                        ? "border-indigo-400/80 bg-indigo-500/15 text-white shadow-md shadow-indigo-500/10"
+                        : "border-slate-800 bg-slate-900/60 text-slate-400 hover:border-slate-700"
+                    }`}
+                  >
+                    <Bot size={18} className={aiDetectSubMode === "detect-qa" ? "text-indigo-400 shrink-0 mt-0.5" : "text-slate-500 shrink-0 mt-0.5"} />
+                    <div>
+                      <div className="font-bold text-xs flex items-center gap-1.5 text-white">
+                        <span>🔍 Auto-Detect Embedded Q&amp;A Pairs</span>
+                        {aiDetectSubMode === "detect-qa" && (
+                          <span className="rounded bg-indigo-500/20 px-1.5 py-0.2 text-[10px] text-indigo-300 font-bold">Active</span>
+                        )}
+                      </div>
+                      <p className="mt-1 text-[11px] text-slate-300 leading-tight">
+                        Paste messy or irregular text that contains existing questions and answers. AI extracts and cleans each pair cleanly.
+                      </p>
+                    </div>
+                  </button>
+                </div>
+
+                {/* AI Controls */}
+                <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
+                  <div className="flex items-center gap-2 text-xs">
+                    <span className="text-slate-300 font-semibold">Card Target Count:</span>
+                    <select
+                      value={aiDetectCardCount}
+                      onChange={(e) => setAiDetectCardCount(Number(e.target.value))}
+                      className="rounded-xl border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-slate-100 outline-none focus:border-cyan-400"
+                    >
+                      <option value={3}>3 Flashcards (Quick)</option>
+                      <option value={5}>5 Flashcards (Standard)</option>
+                      <option value={10}>10 Flashcards (Comprehensive)</option>
+                      <option value={15}>15 Flashcards (Deep Dive)</option>
+                      <option value={20}>20 Flashcards (Full Set)</option>
+                    </select>
+                  </div>
+
                   <span className="text-[11px] text-slate-400">
-                    Review extracted Question &amp; Answer pairs below:
+                    💡 Connects to DITroy AI backend on Render / Groq
                   </span>
                 </div>
 
-                <div className="max-h-56 overflow-y-auto space-y-2 pr-1 text-xs">
-                  {liveParsedPreview.map((item, idx) => (
+                {/* Quick Sample Prompts for AI */}
+                <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                  <span className="text-[11px] text-indigo-300 font-medium">Quick Insert Sample Study Material:</span>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {SAMPLE_FORMATS.filter((f) => f.engine === "ai").map((f) => (
+                      <button
+                        key={f.id}
+                        type="button"
+                        onClick={() => handleInsertSample(f.sample, f.engine)}
+                        className="rounded-lg border border-indigo-500/40 bg-indigo-950/60 px-2.5 py-1 text-[11px] font-medium text-indigo-200 hover:border-indigo-400 hover:text-white transition cursor-pointer"
+                      >
+                        {f.title.replace(/^\d+\.\s*/, "")}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Textarea for AI */}
+                <div className="relative">
+                  <textarea
+                    value={bulkText}
+                    onChange={(e) => setBulkText(e.target.value)}
+                    rows={8}
+                    placeholder={
+                      aiDetectSubMode === "from-context"
+                        ? "Paste any paragraph, lecture excerpt, article, or summary here...\n\nExample:\n'The OSI model is a conceptual framework used to describe the functions of a networking system. It characterizes computing functions into a universal set of rules and requirements in order to support interoperability between different products and software. The seven layers are Physical, Data Link, Network, Transport, Session, Presentation, and Application.'"
+                        : "Paste any unstructured questions and answers here...\n\nExample:\n'Q: What is the main difference between TCP and UDP? Answer: TCP is connection-oriented and reliable, while UDP is connectionless and faster. Also what port does HTTP use? 80.'"
+                    }
+                    className="w-full font-mono text-xs leading-relaxed rounded-2xl border border-indigo-500/40 bg-slate-950 p-4 text-slate-100 placeholder:text-slate-600 outline-none focus:border-indigo-400"
+                  />
+                </div>
+
+
+                {/* AI Detected Cards Preview */}
+                {aiDetectedCards.length > 0 && (
+                  <div className="rounded-2xl border border-indigo-500/40 bg-slate-950/90 p-4 space-y-3 animate-in fade-in duration-200">
+                    <div className="flex items-center justify-between border-b border-slate-800 pb-2.5">
+                      <div className="flex items-center gap-2">
+                        <Sparkles size={16} className="text-amber-300 animate-pulse" />
+                        <h4 className="text-xs font-bold text-white uppercase tracking-wider">
+                          DITroy AI Flashcard Results ({aiDetectedCards.length})
+                        </h4>
+                      </div>
+                      <span className="text-[11px] text-slate-400">
+                        Review cards before staging:
+                      </span>
+                    </div>
+
+                    <div className="max-h-60 overflow-y-auto space-y-2 pr-1 text-xs">
+                      {aiDetectedCards.map((card, idx) => (
+                        <div
+                          key={card.tempId}
+                          className="rounded-xl border border-slate-800 bg-slate-900/90 p-3 flex flex-col sm:flex-row sm:items-start justify-between gap-3"
+                        >
+                          <div className="flex-1 space-y-1.5">
+                            <div className="flex items-start gap-1.5">
+                              <span className="font-bold text-cyan-400 shrink-0">Q{idx + 1}:</span>
+                              <span className="text-slate-100 font-medium leading-relaxed">{card.question}</span>
+                            </div>
+                            <div className="flex items-start gap-1.5">
+                              <span className="font-bold text-emerald-400 shrink-0">Ans:</span>
+                              <span className="text-emerald-300 font-semibold leading-relaxed">{card.answer}</span>
+                            </div>
+                          </div>
+
+                          <div className="shrink-0 flex items-center gap-2 sm:flex-col sm:items-end">
+                            <div className="flex items-center gap-1">
+                              <span className="text-[10px] text-slate-400">Diff:</span>
+                              <select
+                                value={card.difficulty}
+                                onChange={(e) => handleAiDetectedDifficultyChange(card.tempId, Number(e.target.value))}
+                                className="rounded bg-slate-800 px-1.5 py-0.5 text-[10px] text-slate-200 border border-slate-700"
+                              >
+                                <option value={1}>1 Easy</option>
+                                <option value={2}>2 Moderate</option>
+                                <option value={3}>3 Medium</option>
+                                <option value={4}>4 Hard</option>
+                                <option value={5}>5 Expert</option>
+                              </select>
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteAiDetectedCard(card.tempId)}
+                              className="text-slate-500 hover:text-rose-400 p-1 cursor-pointer"
+                              title="Remove card"
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* AI Action Trigger Toolbar */}
+                <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
+                  <div className="text-xs text-slate-400">
+                    {isAiDetecting ? (
+                      <span className="flex items-center gap-2 text-indigo-300">
+                        <Loader2 className="h-4 w-4 animate-spin text-indigo-400" />
+                        DITroy AI is analyzing and generating flashcards...
+                      </span>
+                    ) : aiDetectedCards.length > 0 ? (
+                      <span className="text-emerald-400 font-medium">
+                        ✨ {aiDetectedCards.length} flashcards ready to add to your deck.
+                      </span>
+                    ) : (
+                      <span>Paste notes above and click Run AI Smart Detect.</span>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      disabled={!bulkText.trim() || isAiDetecting}
+                      onClick={handleRunAiSmartDetect}
+                      className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-indigo-500 to-cyan-500 px-5 py-2.5 text-xs font-bold text-white shadow-lg shadow-indigo-500/20 hover:from-indigo-400 hover:to-cyan-400 transition disabled:opacity-40 cursor-pointer"
+                    >
+                      {isAiDetecting ? (
+                        <>
+                          <Loader2 size={15} className="animate-spin" />
+                          <span>Processing...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles size={15} className="text-amber-300" />
+                          <span>
+                            {aiDetectSubMode === "detect-qa"
+                              ? "🔍 Detect Q&A with AI"
+                              : "✨ Generate Q&A from Context"}
+                          </span>
+                        </>
+                      )}
+                    </button>
+
+                    {aiDetectedCards.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={handleApplyAiDetectedCards}
+                        className="inline-flex items-center gap-2 rounded-full bg-emerald-500 px-5 py-2.5 text-xs font-bold text-slate-950 hover:bg-emerald-400 transition cursor-pointer shadow-lg shadow-emerald-500/20 animate-in fade-in"
+                      >
+                        <Plus size={15} />
+                        <span>Stage All {aiDetectedCards.length} AI Cards</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* TAB 2: DITROY AI GENERATOR */}
+
+        {inputTab === "ai" && (
+          <div className="space-y-5 animate-in fade-in duration-200">
+            <div className="rounded-2xl border border-indigo-500/30 bg-gradient-to-br from-indigo-950/40 to-slate-950/80 p-5 space-y-4">
+              <div className="flex items-center gap-2 text-indigo-300">
+                <Sparkles className="h-5 w-5 text-amber-300 animate-pulse" />
+                <h3 className="text-sm font-bold text-white tracking-wide">
+                  DITroy AI Instant Flashcard Generator
+                </h3>
+              </div>
+              <p className="text-xs text-slate-300 leading-relaxed">
+                Type any study topic, or paste lecture transcripts, syllabus bullet points, textbook excerpts, or unformatted notes. DITroy AI will automatically extract high-yield questions, definitions, difficulty ratings, and tags!
+              </p>
+
+              <div className="grid gap-4 md:grid-cols-3">
+                <div className="md:col-span-2 space-y-1.5">
+                  <label className="text-xs font-semibold text-slate-200">
+                    Study Topic / Subject
+                  </label>
+                  <input
+                    type="text"
+                    value={aiTopic}
+                    onChange={(e) => setAiTopic(e.target.value)}
+                    placeholder="e.g. Computer Networks: TCP/IP vs OSI Model, Photosynthesis, Organic Chemistry..."
+                    className="w-full rounded-xl border border-slate-700 bg-slate-900 px-3.5 py-2.5 text-xs text-slate-100 placeholder:text-slate-500 outline-none focus:border-indigo-400"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-slate-200">
+                    Number of Cards
+                  </label>
+                  <select
+                    value={aiCardCount}
+                    onChange={(e) => setAiCardCount(Number(e.target.value))}
+                    className="w-full rounded-xl border border-slate-700 bg-slate-900 px-3 py-2.5 text-xs text-slate-100 outline-none focus:border-indigo-400"
+                  >
+                    <option value={3}>3 Flashcards (Quick)</option>
+                    <option value={5}>5 Flashcards (Standard)</option>
+                    <option value={10}>10 Flashcards (Comprehensive)</option>
+                    <option value={15}>15 Flashcards (Deep Dive)</option>
+                    <option value={20}>20 Flashcards (Full Deck)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="flex items-center justify-between text-xs font-semibold text-slate-200">
+                  <span>Source Text / Notes (Optional but recommended)</span>
+                  <span className="text-[11px] text-slate-400">Paste your raw notes, articles, or transcripts</span>
+                </label>
+                <textarea
+                  value={aiNotes}
+                  onChange={(e) => setAiNotes(e.target.value)}
+                  rows={5}
+                  placeholder="Paste lecture notes, study guide text, or key concepts here..."
+                  className="w-full font-mono text-xs leading-relaxed rounded-xl border border-slate-700 bg-slate-900 p-3 text-slate-100 placeholder:text-slate-500 outline-none focus:border-indigo-400"
+                />
+              </div>
+
+              <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
+                <div className="text-xs text-slate-400">
+                  {aiLoading ? (
+                    <span className="flex items-center gap-2 text-indigo-300">
+                      <Loader2 className="h-4 w-4 animate-spin text-indigo-400" />
+                      DITroy AI is processing content...
+                    </span>
+                  ) : (
+                    <span>Ready to generate {aiCardCount} flashcards with AI.</span>
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  disabled={aiLoading || (!aiTopic.trim() && !aiNotes.trim())}
+                  onClick={handleGenerateWithAI}
+                  className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-indigo-500 to-cyan-500 px-6 py-2.5 text-xs font-bold text-white shadow-lg shadow-indigo-500/20 hover:from-indigo-400 hover:to-cyan-400 transition disabled:opacity-40 cursor-pointer"
+                >
+                  {aiLoading ? (
+                    <>
+                      <Loader2 size={16} className="animate-spin" />
+                      <span>Generating...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles size={16} className="text-amber-300" />
+                      <span>Generate Flashcards with DITroy AI</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+
+            {/* AI Generated Preview Cards */}
+            {aiGeneratedCards.length > 0 && (
+              <div className="rounded-2xl border border-indigo-500/30 bg-indigo-950/20 p-4 space-y-3 animate-in fade-in duration-200">
+                <div className="flex items-center justify-between border-b border-indigo-500/20 pb-2">
+                  <div className="flex items-center gap-2">
+                    <Bot size={16} className="text-indigo-400" />
+                    <h4 className="text-xs font-bold text-indigo-200 uppercase tracking-wider">
+                      AI Generated Flashcards ({aiGeneratedCards.length})
+                    </h4>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleApplyAiGeneratedCards}
+                    className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500 px-4 py-1.5 text-xs font-bold text-slate-950 hover:bg-emerald-400 transition cursor-pointer shadow-md shadow-emerald-500/20"
+                  >
+                    <Plus size={14} />
+                    <span>Add All to Deck Queue ({aiGeneratedCards.length})</span>
+                  </button>
+                </div>
+
+                <div className="max-h-72 overflow-y-auto space-y-2.5 pr-1 text-xs">
+                  {aiGeneratedCards.map((item, idx) => (
                     <div
                       key={idx}
-                      className="rounded-xl border border-slate-800 bg-slate-950/80 p-3 flex flex-col sm:flex-row sm:items-start justify-between gap-3"
+                      className="rounded-xl border border-slate-800 bg-slate-900/90 p-3 flex flex-col sm:flex-row sm:items-start justify-between gap-3"
                     >
-                      <div className="flex-1 space-y-1">
+                      <div className="flex-1 space-y-1.5">
                         <div className="flex items-start gap-1.5">
-                          <span className="font-bold text-cyan-400 shrink-0">Q{idx + 1}:</span>
-                          <span className="text-slate-100 leading-relaxed font-medium">{item.question}</span>
+                          <span className="font-bold text-indigo-400 shrink-0">Q{idx + 1}:</span>
+                          <span className="text-slate-100 font-medium leading-relaxed">{item.question}</span>
                         </div>
+                        {item.tags && item.tags.length > 0 && (
+                          <div className="flex flex-wrap gap-1 mt-1">
+                            {item.tags.map((t, ti) => (
+                              <span key={ti} className="rounded bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 px-1.5 py-0.5 text-[10px]">
+                                #{t}
+                              </span>
+                            ))}
+                          </div>
+                        )}
                       </div>
-                      <div className="shrink-0 sm:max-w-xs sm:w-1/3 pl-3 sm:border-l border-slate-800/80">
+                      <div className="shrink-0 sm:max-w-xs sm:w-2/5 pl-3 sm:border-l border-slate-800/80 space-y-1">
                         <div className="flex items-start gap-1.5">
                           <span className="font-bold text-emerald-400 shrink-0">Ans:</span>
                           <span className="font-semibold text-emerald-300 leading-relaxed">{item.answer}</span>
+                        </div>
+                        <div className="text-[10px] text-slate-400">
+                          Difficulty: {item.difficulty}/5
                         </div>
                       </div>
                     </div>
@@ -1424,24 +2170,6 @@ function CreateContent() {
                 </div>
               </div>
             )}
-
-            <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
-              <div className="text-xs text-slate-400">
-                {liveParsedPreview.length > 0
-                  ? `⚡ Ready to stage ${liveParsedPreview.length} flashcards.`
-                  : "Paste your questions and answers above."}
-              </div>
-
-              <button
-                type="button"
-                disabled={!bulkText.trim() || liveParsedPreview.length === 0}
-                onClick={handleApplyBulkCards}
-                className="inline-flex items-center gap-2 rounded-full bg-cyan-500 px-6 py-2.5 text-xs font-bold text-slate-950 hover:bg-cyan-400 transition disabled:opacity-40 cursor-pointer shadow-lg shadow-cyan-500/20"
-              >
-                <Plus size={16} />
-                Stage {liveParsedPreview.length > 0 ? liveParsedPreview.length : ""} Flashcards
-              </button>
-            </div>
           </div>
         )}
 
@@ -1734,7 +2462,15 @@ function CreateContent() {
           onClose={() => setIsShareModalOpen(false)}
         />
       )}
+
+      {/* Guide & FAQ Modal Dialog */}
+      <HelpGuideModal
+        isOpen={isHelpModalOpen}
+        onClose={() => setIsHelpModalOpen(false)}
+        onInsertSample={handleInsertSample}
+      />
     </div>
+
   );
 }
 

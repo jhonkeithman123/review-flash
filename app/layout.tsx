@@ -1,6 +1,7 @@
 import "./globals.css";
 import { Navbar } from "@/components/navbar";
 import { InteractiveTour } from "@/components/interactive-tour";
+import { AiChatDrawer } from "@/components/ai-chat-drawer";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
@@ -19,6 +20,7 @@ export default function RootLayout({
         <Navbar />
         <main className="mx-auto max-w-6xl px-4 py-8">{children}</main>
         <InteractiveTour />
+        <AiChatDrawer />
       </body>
     </html>
   );

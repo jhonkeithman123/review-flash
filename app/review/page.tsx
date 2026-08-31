@@ -278,6 +278,58 @@ function ReviewContent() {
           <div className="mx-auto flex max-w-2xl flex-col items-center gap-6">
             {currentCard && <FlashcardCard card={currentCard} />}
 
+            {/* AI Tutor Quick Actions for Active Card */}
+            {currentCard && (
+              <div className="flex w-full items-center justify-between gap-2 rounded-2xl border border-indigo-500/30 bg-indigo-950/20 px-4 py-2.5 backdrop-blur-sm">
+                <div className="flex items-center gap-2 text-xs font-semibold text-indigo-300">
+                  <Sparkles size={14} className="text-amber-300 animate-pulse" />
+                  <span>DITroy AI Study Assistant</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (typeof window !== "undefined") {
+                        window.dispatchEvent(
+                          new CustomEvent("open-ai-tutor", {
+                            detail: {
+                              currentCard,
+                              deckTitle: activeDeck?.title,
+                              prompt: `Explain this concept simply with a clear analogy: Question: "${currentCard.question}" -> Answer: "${currentCard.answer}"`,
+                              mode: "review",
+                            },
+                          })
+                        );
+                      }
+                    }}
+                    className="inline-flex items-center gap-1 rounded-lg border border-indigo-500/40 bg-indigo-600/20 px-2.5 py-1 text-xs font-medium text-indigo-200 hover:bg-indigo-600/30 transition cursor-pointer"
+                  >
+                    <span>💡 Explain</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (typeof window !== "undefined") {
+                        window.dispatchEvent(
+                          new CustomEvent("open-ai-tutor", {
+                            detail: {
+                              currentCard,
+                              deckTitle: activeDeck?.title,
+                              prompt: `Give me a memorable mnemonic or memory trick to remember this: "${currentCard.question}" -> "${currentCard.answer}"`,
+                              mode: "review",
+                            },
+                          })
+                        );
+                      }
+                    }}
+                    className="inline-flex items-center gap-1 rounded-lg border border-purple-500/40 bg-purple-600/20 px-2.5 py-1 text-xs font-medium text-purple-200 hover:bg-purple-600/30 transition cursor-pointer"
+                  >
+                    <span>🧠 Mnemonic</span>
+                  </button>
+                </div>
+              </div>
+            )}
+
             <div className="flex w-full flex-col gap-3 sm:flex-row">
               <button
                 type="button"

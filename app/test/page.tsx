@@ -212,6 +212,26 @@ function TestContent() {
             <button
               type="button"
               onClick={() => {
+                if (typeof window !== "undefined") {
+                  window.dispatchEvent(
+                    new CustomEvent("open-ai-tutor", {
+                      detail: {
+                        deckTitle: activeDeck?.title,
+                        prompt: `I just finished my quiz for deck "${selectedDeckId === "all" ? "All Decks" : activeDeck?.title || "Study Set"}" and scored ${score}% (${results.correct}/${results.total} correct). Give me a 3-step study improvement plan to reach 100% mastery!`,
+                        mode: "test",
+                      },
+                    })
+                  );
+                }
+              }}
+              className="inline-flex items-center gap-2 rounded-full border border-indigo-500/50 bg-indigo-500/20 px-6 py-3 text-sm font-bold text-indigo-200 hover:bg-indigo-500/30 transition cursor-pointer"
+            >
+              <Sparkles size={16} className="text-amber-300" />
+              AI Study Plan ✨
+            </button>
+            <button
+              type="button"
+              onClick={() => {
                 setQuestionIndex(0);
                 setSelectedAnswer(undefined);
                 setResults({ correct: 0, total: 0, submitted: false });
@@ -283,8 +303,31 @@ function TestContent() {
         </div>
       ) : (
         <div className="flex flex-col items-center gap-4">
-          <div className="text-xs text-slate-400">
-            Question {questionIndex + 1} of {questions.length}
+          <div className="flex items-center justify-between w-full max-w-xl text-xs text-slate-400">
+            <span>Question {questionIndex + 1} of {questions.length}</span>
+            {currentQuestion && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (typeof window !== "undefined") {
+                    window.dispatchEvent(
+                      new CustomEvent("open-ai-tutor", {
+                        detail: {
+                          currentCard: currentQuestion.card,
+                          deckTitle: activeDeck?.title,
+                          prompt: `I'm currently taking a quiz on this question: "${currentQuestion.card.question}". Can you give me a helpful clue or hint without directly revealing the answer?`,
+                          mode: "test",
+                        },
+                      })
+                    );
+                  }
+                }}
+                className="inline-flex items-center gap-1 text-xs font-semibold text-indigo-400 hover:text-indigo-300 transition cursor-pointer"
+              >
+                <Sparkles size={13} className="text-amber-300" />
+                <span>Need a Hint? Ask DITroy</span>
+              </button>
+            )}
           </div>
           {currentQuestion ? (
             <QuizQuestion
