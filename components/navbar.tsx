@@ -173,6 +173,15 @@ export function Navbar() {
     }
   };
 
+  const handleOpenWhatsNew = () => {
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("open-whats-new"));
+      setMoreDropdownOpen(false);
+      setUserDropdownOpen(false);
+      setMobileMenuOpen(false);
+    }
+  };
+
   return (
     <>
       <nav className="sticky top-0 z-40 border-b border-slate-800/90 bg-slate-950/85 backdrop-blur-xl transition-all">
@@ -195,16 +204,17 @@ export function Navbar() {
               </span>
             </Link>
 
-
-            <Link
-              href="/updates"
-              title="View Version History & Changelog (v1.4.0)"
-              className="hidden sm:inline-flex items-center gap-1 rounded-full border border-slate-800 bg-slate-900/90 px-2 py-0.5 text-[10px] font-mono font-semibold text-slate-400 hover:border-cyan-500/40 hover:text-cyan-300 transition"
+            <button
+              type="button"
+              onClick={handleOpenWhatsNew}
+              title="View What's New in v1.4.0"
+              className="hidden sm:inline-flex items-center gap-1 rounded-full border border-slate-800 bg-slate-900/90 px-2 py-0.5 text-[10px] font-mono font-semibold text-slate-400 hover:border-cyan-500/40 hover:text-cyan-300 transition cursor-pointer"
             >
-              <Rocket size={10} className="text-cyan-400" />
+              <Rocket size={10} className="text-cyan-400 animate-pulse" />
               <span>v1.4.0</span>
-            </Link>
+            </button>
           </div>
+
 
 
           {/* MIDDLE: Primary Nav Links (Visible md & up, no overlap) */}
@@ -291,20 +301,21 @@ export function Navbar() {
                     </div>
                   </button>
 
-                  <Link
-                    href="/updates"
-                    onClick={() => setMoreDropdownOpen(false)}
-                    className="flex items-center gap-2.5 rounded-xl px-2.5 py-2 text-xs font-medium text-slate-200 hover:bg-slate-900 hover:text-white transition"
+                  <button
+                    type="button"
+                    onClick={handleOpenWhatsNew}
+                    className="w-full flex items-center gap-2.5 rounded-xl px-2.5 py-2 text-xs font-medium text-slate-200 hover:bg-slate-900 hover:text-white transition text-left cursor-pointer"
                   >
                     <Rocket size={15} className="text-amber-400" />
                     <div className="flex-1">
                       <div className="flex items-center gap-1.5">
-                        <span>Version Updates</span>
-                        <span className="rounded bg-cyan-500/20 text-cyan-300 px-1 py-0.2 text-[9px] font-bold">v1.4.0</span>
+                        <span>What&apos;s New</span>
+                        <span className="rounded bg-cyan-500/20 text-cyan-300 px-1 py-0.2 text-[9px] font-bold font-mono">v1.4.0</span>
                       </div>
-                      <div className="text-[10px] text-slate-400">Release logs &amp; changelog</div>
+                      <div className="text-[10px] text-slate-400">Announcement &amp; features</div>
                     </div>
-                  </Link>
+                  </button>
+
 
                   <Link
                     href="/decks"
@@ -395,18 +406,19 @@ export function Navbar() {
                           <HelpCircle size={14} className="text-indigo-400" />
                           <span>Guide &amp; FAQs</span>
                         </Link>
-                        <Link
-                          href="/updates"
-                          onClick={() => setUserDropdownOpen(false)}
-                          className="flex items-center gap-2 rounded-xl px-2.5 py-1.5 text-xs text-slate-300 hover:bg-slate-900 hover:text-white transition"
+                        <button
+                          type="button"
+                          onClick={handleOpenWhatsNew}
+                          className="w-full flex items-center gap-2 rounded-xl px-2.5 py-1.5 text-xs text-slate-300 hover:bg-slate-900 hover:text-white transition text-left cursor-pointer"
                         >
                           <Rocket size={14} className="text-amber-400" />
                           <div className="flex items-center justify-between flex-1">
                             <span>What&apos;s New</span>
                             <span className="text-[10px] font-mono text-cyan-300 font-bold">v1.4.0</span>
                           </div>
-                        </Link>
+                        </button>
                       </div>
+
 
 
                       {/* Sign Out Button */}
@@ -603,18 +615,30 @@ export function Navbar() {
 
             {/* Quick Actions inside Drawer */}
             <div className="pt-2 border-t border-slate-800/80 space-y-2">
-              <button
-                type="button"
-                onClick={handleOpenTour}
-                className="w-full flex items-center justify-center gap-2 rounded-xl border border-cyan-500/40 bg-cyan-500/10 px-4 py-2 text-xs font-bold text-cyan-300 hover:bg-cyan-500/20 transition cursor-pointer"
-              >
-                <GraduationCap size={15} />
-                <span>Take Interactive Tour 🎓</span>
-              </button>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={handleOpenTour}
+                  className="flex items-center justify-center gap-1.5 rounded-xl border border-cyan-500/40 bg-cyan-500/10 px-3 py-2 text-xs font-bold text-cyan-300 hover:bg-cyan-500/20 transition cursor-pointer"
+                >
+                  <GraduationCap size={15} />
+                  <span>Tour 🎓</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleOpenWhatsNew}
+                  className="flex items-center justify-center gap-1.5 rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs font-bold text-amber-300 hover:bg-amber-500/20 transition cursor-pointer"
+                >
+                  <Rocket size={15} />
+                  <span>What&apos;s New 🚀</span>
+                </button>
+              </div>
             </div>
           </div>
         )}
       </nav>
+
 
       {/* Auth Modal */}
       <AuthModal

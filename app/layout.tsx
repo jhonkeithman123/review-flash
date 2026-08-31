@@ -2,7 +2,9 @@ import "./globals.css";
 import { Navbar } from "@/components/navbar";
 import { InteractiveTour } from "@/components/interactive-tour";
 import { AiChatDrawer } from "@/components/ai-chat-drawer";
+import { WhatsNewModal } from "@/components/whats-new-modal";
 import type { Metadata } from "next";
+
 
 export const metadata: Metadata = {
   title: "ReviewFlash — Active Recall Flashcards & AI Tutor",
@@ -34,8 +36,10 @@ export default function RootLayout({
         <Navbar />
         <main className="mx-auto max-w-6xl px-4 py-8">{children}</main>
         <InteractiveTour />
+        <WhatsNewModal />
         <AiChatDrawer />
       </body>
     </html>
+
   );
 }
