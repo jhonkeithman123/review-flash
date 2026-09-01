@@ -15,6 +15,7 @@ import {
 import {
   BookOpen,
   BrainCircuit,
+  Bug,
   Check,
   ChevronDown,
   Copy,
@@ -29,9 +30,11 @@ import {
   MoreHorizontal,
   PlusCircle,
   Rocket,
+  Scale,
   Share2,
   Shield,
   Sparkles,
+  Trash2,
   User,
   UserCircle2,
   X,
@@ -318,14 +321,50 @@ export function Navbar() {
                   </button>
 
                   <Link
+                    href="/support"
+                    onClick={() => setMoreDropdownOpen(false)}
+                    className="flex items-center gap-2.5 rounded-xl px-2.5 py-2 text-xs font-medium text-slate-200 hover:bg-slate-900 hover:text-white transition"
+                  >
+                    <Bug size={15} className="text-cyan-400" />
+                    <div className="flex-1">
+                      <div>Support &amp; Bugs</div>
+                      <div className="text-[10px] text-slate-400">Report issues &amp; feedback</div>
+                    </div>
+                  </Link>
+
+                  <Link
+                    href="/terms"
+                    onClick={() => setMoreDropdownOpen(false)}
+                    className="flex items-center gap-2.5 rounded-xl px-2.5 py-2 text-xs font-medium text-slate-200 hover:bg-slate-900 hover:text-white transition"
+                  >
+                    <Scale size={15} className="text-indigo-400" />
+                    <div className="flex-1">
+                      <div>Terms of Service</div>
+                      <div className="text-[10px] text-slate-400">Usage terms &amp; rules</div>
+                    </div>
+                  </Link>
+
+                  <Link
                     href="/privacy"
                     onClick={() => setMoreDropdownOpen(false)}
                     className="flex items-center gap-2.5 rounded-xl px-2.5 py-2 text-xs font-medium text-slate-200 hover:bg-slate-900 hover:text-white transition"
                   >
                     <Shield size={15} className="text-emerald-400" />
                     <div className="flex-1">
-                      <div>Privacy &amp; Data</div>
-                      <div className="text-[10px] text-slate-400">Privacy policy &amp; deletion</div>
+                      <div>Privacy Policy</div>
+                      <div className="text-[10px] text-slate-400">Data protection notice</div>
+                    </div>
+                  </Link>
+
+                  <Link
+                    href="/data-deletion"
+                    onClick={() => setMoreDropdownOpen(false)}
+                    className="flex items-center gap-2.5 rounded-xl px-2.5 py-2 text-xs font-medium text-slate-200 hover:bg-slate-900 hover:text-white transition"
+                  >
+                    <Trash2 size={15} className="text-rose-400" />
+                    <div className="flex-1">
+                      <div>Data Deletion</div>
+                      <div className="text-[10px] text-slate-400">Delete account &amp; data</div>
                     </div>
                   </Link>
 
@@ -334,7 +373,7 @@ export function Navbar() {
                     onClick={() => setMoreDropdownOpen(false)}
                     className="flex items-center gap-2.5 rounded-xl px-2.5 py-2 text-xs font-medium text-slate-200 hover:bg-slate-900 hover:text-white transition"
                   >
-                    <Share2 size={15} className="text-indigo-400" />
+                    <Share2 size={15} className="text-cyan-400" />
                     <div className="flex-1">
                       <div>Import Share Code</div>
                       <div className="text-[10px] text-slate-400">Load peer decks</div>
@@ -418,6 +457,38 @@ export function Navbar() {
                           <HelpCircle size={14} className="text-indigo-400" />
                           <span>Guide &amp; FAQs</span>
                         </Link>
+                        <Link
+                          href="/support"
+                          onClick={() => setUserDropdownOpen(false)}
+                          className="flex items-center gap-2 rounded-xl px-2.5 py-1.5 text-xs text-slate-300 hover:bg-slate-900 hover:text-white transition"
+                        >
+                          <Bug size={14} className="text-cyan-400" />
+                          <span>Support &amp; Report Bug</span>
+                        </Link>
+                        <Link
+                          href="/terms"
+                          onClick={() => setUserDropdownOpen(false)}
+                          className="flex items-center gap-2 rounded-xl px-2.5 py-1.5 text-xs text-slate-300 hover:bg-slate-900 hover:text-white transition"
+                        >
+                          <Scale size={14} className="text-indigo-400" />
+                          <span>Terms of Service</span>
+                        </Link>
+                        <Link
+                          href="/privacy"
+                          onClick={() => setUserDropdownOpen(false)}
+                          className="flex items-center gap-2 rounded-xl px-2.5 py-1.5 text-xs text-slate-300 hover:bg-slate-900 hover:text-white transition"
+                        >
+                          <Shield size={14} className="text-emerald-400" />
+                          <span>Privacy Policy</span>
+                        </Link>
+                        <Link
+                          href="/data-deletion"
+                          onClick={() => setUserDropdownOpen(false)}
+                          className="flex items-center gap-2 rounded-xl px-2.5 py-1.5 text-xs text-slate-300 hover:bg-slate-900 hover:text-white transition"
+                        >
+                          <Trash2 size={14} className="text-rose-400" />
+                          <span>Data Deletion</span>
+                        </Link>
                         <button
                           type="button"
                           onClick={handleOpenWhatsNew}
@@ -426,7 +497,7 @@ export function Navbar() {
                           <Rocket size={14} className="text-amber-400" />
                           <div className="flex items-center justify-between flex-1">
                             <span>What&apos;s New</span>
-                            <span className="text-[10px] font-mono text-cyan-300 font-bold">v1.5.0</span>
+                            <span className="text-[10px] font-mono text-cyan-300 font-bold">v2.0.0</span>
                           </div>
                         </button>
                       </div>
@@ -624,6 +695,36 @@ export function Navbar() {
               </Link>
 
               <Link
+                href="/support"
+                onClick={() => setMobileMenuOpen(false)}
+                className={`flex items-center justify-between rounded-xl px-3.5 py-2.5 text-sm font-medium transition ${
+                  pathname === "/support"
+                    ? "border border-cyan-500/50 bg-cyan-500/10 text-cyan-300 shadow-sm"
+                    : "text-slate-300 hover:bg-slate-900 hover:text-white"
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <Bug size={16} className={pathname === "/support" ? "text-cyan-300" : "text-slate-400"} />
+                  <span>Support &amp; Report Bug</span>
+                </div>
+              </Link>
+
+              <Link
+                href="/terms"
+                onClick={() => setMobileMenuOpen(false)}
+                className={`flex items-center justify-between rounded-xl px-3.5 py-2.5 text-sm font-medium transition ${
+                  pathname === "/terms"
+                    ? "border border-cyan-500/50 bg-cyan-500/10 text-cyan-300 shadow-sm"
+                    : "text-slate-300 hover:bg-slate-900 hover:text-white"
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <Scale size={16} className={pathname === "/terms" ? "text-cyan-300" : "text-slate-400"} />
+                  <span>Terms of Service</span>
+                </div>
+              </Link>
+
+              <Link
                 href="/privacy"
                 onClick={() => setMobileMenuOpen(false)}
                 className={`flex items-center justify-between rounded-xl px-3.5 py-2.5 text-sm font-medium transition ${
@@ -634,7 +735,22 @@ export function Navbar() {
               >
                 <div className="flex items-center gap-3">
                   <Shield size={16} className={pathname === "/privacy" ? "text-cyan-300" : "text-slate-400"} />
-                  <span>Privacy Policy &amp; Data</span>
+                  <span>Privacy Policy</span>
+                </div>
+              </Link>
+
+              <Link
+                href="/data-deletion"
+                onClick={() => setMobileMenuOpen(false)}
+                className={`flex items-center justify-between rounded-xl px-3.5 py-2.5 text-sm font-medium transition ${
+                  pathname === "/data-deletion"
+                    ? "border border-rose-500/50 bg-rose-500/10 text-rose-300 shadow-sm"
+                    : "text-slate-300 hover:bg-slate-900 hover:text-white"
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <Trash2 size={16} className={pathname === "/data-deletion" ? "text-rose-400" : "text-slate-400"} />
+                  <span>User Data Deletion</span>
                 </div>
               </Link>
             </div>

@@ -432,27 +432,42 @@ export default function HelpPage() {
         </div>
       </section>
 
-      {/* CTA Footer */}
-      <div className="flex flex-wrap items-center justify-between gap-4 rounded-3xl border border-slate-800 bg-slate-900/60 p-6">
-        <div>
-          <h3 className="text-sm font-bold text-white">Ready to create your next study set?</h3>
-          <p className="text-xs text-slate-400">Paste your reviewer or generate cards with DITroy AI in seconds.</p>
+      {/* CTA Footer & Support */}
+      <div className="rounded-3xl border border-slate-800 bg-slate-900/60 p-6 sm:p-8 space-y-6">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <h3 className="text-sm font-bold text-white">Ready to create your next study set?</h3>
+            <p className="text-xs text-slate-400">Paste your reviewer or generate cards with DITroy AI in seconds.</p>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <Link
+              href="/create"
+              className="inline-flex items-center gap-2 rounded-full bg-cyan-500 px-5 py-2.5 text-xs font-bold text-slate-950 hover:bg-cyan-400 transition cursor-pointer shadow-lg shadow-cyan-500/20"
+            >
+              <Plus size={15} />
+              <span>Create Flashcards</span>
+            </Link>
+            <Link
+              href="/decks"
+              className="inline-flex items-center gap-2 rounded-full border border-slate-700 bg-slate-800 px-5 py-2.5 text-xs font-semibold text-slate-200 hover:bg-slate-700 hover:text-white transition"
+            >
+              <BookOpen size={15} />
+              <span>Explore My Decks</span>
+            </Link>
+          </div>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="pt-4 border-t border-slate-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-slate-400">
+          <div className="flex items-center gap-2">
+            <HelpCircle size={15} className="text-cyan-400 shrink-0" />
+            <span>Found a bug or need help?</span>
+          </div>
           <Link
-            href="/create"
-            className="inline-flex items-center gap-2 rounded-full bg-cyan-500 px-5 py-2.5 text-xs font-bold text-slate-950 hover:bg-cyan-400 transition cursor-pointer shadow-lg shadow-cyan-500/20"
+            href="/support"
+            className="inline-flex items-center gap-2 text-xs font-semibold text-cyan-300 hover:underline"
           >
-            <Plus size={15} />
-            <span>Create Flashcards</span>
-          </Link>
-          <Link
-            href="/decks"
-            className="inline-flex items-center gap-2 rounded-full border border-slate-700 bg-slate-800 px-5 py-2.5 text-xs font-semibold text-slate-200 hover:bg-slate-700 hover:text-white transition"
-          >
-            <BookOpen size={15} />
-            <span>Explore My Decks</span>
+            <span>Visit Support Center &amp; Report a Bug ➔</span>
           </Link>
         </div>
       </div>

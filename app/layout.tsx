@@ -1,5 +1,6 @@
 import "./globals.css";
 import { Navbar } from "@/components/navbar";
+import { Footer } from "@/components/footer";
 import { InteractiveTour } from "@/components/interactive-tour";
 import { AiChatDrawer } from "@/components/ai-chat-drawer";
 import { WhatsNewModal } from "@/components/whats-new-modal";
@@ -44,6 +45,7 @@ export default function RootLayout({
       <body className="bg-slate-950 text-slate-100 antialiased min-h-dvh flex flex-col">
         <Navbar />
         <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-6 sm:py-8 pb-safe">{children}</main>
+        <Footer />
         <InteractiveTour />
         <WhatsNewModal />
         <AiChatDrawer />

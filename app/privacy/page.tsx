@@ -167,7 +167,9 @@ export default function PrivacyPolicyPage() {
           If you have any questions about this Privacy Policy, your personal data, or data deletion requests, please contact us at:
         </p>
         <div className="rounded-xl border border-slate-800 bg-slate-950 px-4 py-3 font-mono text-xs text-cyan-300 inline-block">
-          support@review-flash.firebaseapp.com
+          <a href="mailto:keithvirgenes17@gmail.com" className="hover:underline">
+            keithvirgenes17@gmail.com
+          </a>
         </div>
       </div>
 
@@ -175,6 +177,7 @@ export default function PrivacyPolicyPage() {
       <div className="flex flex-wrap items-center justify-between gap-4 pt-4 border-t border-slate-800 text-xs text-slate-400">
         <div className="flex items-center gap-4">
           <Link href="/" className="hover:text-white transition">Home</Link>
+          <Link href="/support" className="hover:text-white transition">Support &amp; Bugs</Link>
           <Link href="/terms" className="hover:text-white transition">Terms of Service</Link>
           <Link href="/help" className="hover:text-white transition">Guide &amp; FAQs</Link>
           <Link href="/updates" className="hover:text-white transition">What&apos;s New</Link>
