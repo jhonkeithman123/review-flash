@@ -7,6 +7,10 @@ const nextConfig: NextConfig = {
         source: "/__/auth/:path*",
         destination: "https://review-flash.firebaseapp.com/__/auth/:path*",
       },
+      {
+        source: "/__/firebase/:path*",
+        destination: "https://review-flash.firebaseapp.com/__/firebase/:path*",
+      },
     ];
   },
 };
