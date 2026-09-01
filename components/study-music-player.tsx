@@ -196,6 +196,12 @@ export function StudyMusicPlayer() {
   // Smart Auto-Failover to next available playlist
   const handleSmartFailover = (reason?: string) => {
     const currentIndex = CURATED_PLAYLISTS.findIndex((p) => p.id === activePlaylist.id);
+    if (consecutiveErrorsRef.current >= 4) {
+      setIsPlaying(false);
+      notify("Music paused. Please choose another track or paste a custom YouTube link.", "info", 4000);
+      return;
+    }
+
     const nextIndex = (currentIndex + 1) % CURATED_PLAYLISTS.length;
     const fallbackPlaylist = CURATED_PLAYLISTS[nextIndex];
 

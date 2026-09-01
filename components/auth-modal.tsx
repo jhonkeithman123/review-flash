@@ -251,13 +251,7 @@ export function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
       console.warn("Facebook Auth Note:", authErr?.code || authErr);
 
       if (authErr?.code === "auth/popup-blocked") {
-        try {
-          await signInWithRedirect(auth, facebookProvider);
-          return;
-        } catch (redirectErr) {
-          console.error("Facebook Redirect Auth Error:", redirectErr);
-          setErrorMsg("Popups are blocked by your browser. Please allow popups or sign in with Email.");
-        }
+        setErrorMsg("The login popup was blocked by your browser. Please click the popup icon in your address bar to allow popups for this site and try again.");
       } else if (authErr?.code === "auth/popup-closed-by-user") {
         setErrorMsg("Facebook sign-in was cancelled before completion. Please try again.");
       } else if (authErr?.code === "auth/account-exists-with-different-credential") {
@@ -276,8 +270,14 @@ export function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
         }
       } else if (authErr?.code === "auth/operation-not-allowed") {
         setErrorMsg("Facebook login is not enabled in Firebase Console ➔ Authentication ➔ Sign-in method.");
+      } else if (authErr?.code === "auth/unauthorized-domain") {
+        setErrorMsg("Domain not authorized. Please add review-flash.vercel.app in Firebase Console ➔ Authentication ➔ Settings ➔ Authorized Domains.");
       } else {
-        setErrorMsg(authErr?.message || "Failed to sign in with Facebook.");
+        setErrorMsg(
+          authErr?.message
+            ? `${authErr.message} (${authErr.code || "auth-error"})`
+            : "Failed to sign in with Facebook."
+        );
       }
     } finally {
       setLoading(false);
