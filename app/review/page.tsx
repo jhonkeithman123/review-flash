@@ -295,7 +295,13 @@ function ReviewContent() {
                             detail: {
                               currentCard,
                               deckTitle: activeDeck?.title,
-                              prompt: `Explain this concept simply with a clear analogy: Question: "${currentCard.question}" -> Answer: "${currentCard.answer}"`,
+                              prompt: `Explain the formal concept behind this card and connect it with an analogy. Keep it compact (no greeting, under 200 words so all 4 points fit):
+Question: "${currentCard.question}" -> Answer: "${currentCard.answer}"
+
+1. What is that? (Formal definition, 1-2 sentences)
+2. How did it come to that? (How it works under the hood, 2 concise bullets)
+3. Why is it like that? (Purpose & why it matters, 1-2 sentences)
+4. Intuitive Analogy (Relatable analogy linked to the mechanics, 1-2 sentences)`,
                               mode: "review",
                             },
                           })
@@ -303,8 +309,9 @@ function ReviewContent() {
                       }
                     }}
                     className="inline-flex items-center gap-1 rounded-lg border border-indigo-500/40 bg-indigo-600/20 px-2.5 py-1 text-xs font-medium text-indigo-200 hover:bg-indigo-600/30 transition cursor-pointer"
+                    title="Deep explanation covering formal concept, mechanics, why it matters, and analogy"
                   >
-                    <span>💡 Explain</span>
+                    <span>💡 Explain Concept</span>
                   </button>
                   <button
                     type="button"

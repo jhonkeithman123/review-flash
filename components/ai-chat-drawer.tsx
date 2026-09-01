@@ -2,6 +2,7 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import {
+  ArrowRight,
   Bot,
   Check,
   ChevronDown,
@@ -43,6 +44,20 @@ export interface ChatMessage {
     answer?: string;
     deckTitle?: string;
   };
+}
+
+/**
+ * Checks whether an AI reply appears abruptly cut off mid-sentence or mid-token.
+ */
+function isMessageTruncated(content: string): boolean {
+  if (!content || content.length < 25) return false;
+  const trimmed = content.trim();
+  const terminalEndings = [".", "!", "?", "```", '"', "'", "”", "’", "*/", "}", ")", ">"];
+  const lastChar = trimmed.slice(-1);
+  if (["(", "[", "{", "-", ":", ",", "/", "\\", "—"].includes(lastChar)) {
+    return true;
+  }
+  return !terminalEndings.some((end) => trimmed.endsWith(end));
 }
 
 export function AiChatDrawer() {
@@ -227,6 +242,18 @@ export function AiChatDrawer() {
     }
   };
 
+  const handleContinueResponse = (lastContent?: string) => {
+    if (!lastContent) {
+      handleSendMessage("Please continue your explanation right where you left off.");
+      return;
+    }
+    const trimmed = lastContent.trim();
+    const snippet = trimmed.slice(-50).replace(/\n+/g, " ");
+    handleSendMessage(
+      `Please continue your explanation right from where you were cut off: "...${snippet}". Continue immediately with the remaining sections concisely without repeating previous text.`
+    );
+  };
+
   const handleQuickPrompt = (promptType: "explain" | "mnemonic" | "quiz" | "hint" | "summary") => {
     if (!activeContext?.question) {
       if (promptType === "quiz") {
@@ -240,7 +267,13 @@ export function AiChatDrawer() {
     switch (promptType) {
       case "explain":
         handleSendMessage(
-          `Can you explain the concept behind this card simply with a clear analogy? Question: "${activeContext.question}" (Answer: "${activeContext.answer}")`
+          `Explain the formal concept behind this card and connect it with an analogy. Keep it compact (no greeting, under 200 words so all 4 points fit):
+Question: "${activeContext.question}" (Answer: "${activeContext.answer}")
+
+1. **What is that?** (Formal definition, 1-2 sentences)
+2. **How did it come to that?** (Mechanics & how it works, 2 concise bullets)
+3. **Why is it like that?** (Purpose & rationale, 1-2 sentences)
+4. **Intuitive Analogy**: (Relatable analogy linked to the mechanics, 1-2 sentences)`
         );
         break;
       case "mnemonic":
@@ -506,7 +539,7 @@ export function AiChatDrawer() {
                 <span>Loading chat history from Firebase Firestore...</span>
               </div>
             ) : (
-              messages.map((msg) => (
+              messages.map((msg, idx) => (
                 <div
                   key={msg.id}
                   className={`flex gap-2.5 ${
@@ -539,6 +572,28 @@ export function AiChatDrawer() {
                       <div className="whitespace-pre-wrap break-words text-xs">{msg.content}</div>
                     )}
 
+                    {/* Continuation Action for Cut-off or Incomplete Assistant Responses */}
+                    {msg.role === "assistant" && idx === messages.length - 1 && !loading && (
+                      <div className="mt-2.5 pt-2 border-t border-slate-700/50 flex items-center justify-between gap-2">
+                        {isMessageTruncated(msg.content) ? (
+                          <span className="text-[11px] text-amber-300 font-medium flex items-center gap-1">
+                            <span>⚠️</span>
+                            <span>Response was cut off</span>
+                          </span>
+                        ) : (
+                          <span className="text-[10px] text-slate-400">Need more details?</span>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => handleContinueResponse(msg.content)}
+                          className="inline-flex items-center gap-1 text-[11px] font-semibold text-cyan-300 hover:text-cyan-200 bg-cyan-500/10 hover:bg-cyan-500/20 px-2 py-0.5 rounded-lg border border-cyan-500/30 transition cursor-pointer"
+                          title="Ask AI to continue generating from where it stopped"
+                        >
+                          <span>Continue response</span>
+                          <ArrowRight className="h-3 w-3" />
+                        </button>
+                      </div>
+                    )}
 
                     <div className="mt-1 flex items-center justify-between text-[10px] opacity-70">
                       <span>{msg.timestamp}</span>
@@ -586,12 +641,26 @@ export function AiChatDrawer() {
           {/* Quick Action Chips */}
           <div className="border-t border-slate-800/80 bg-slate-950/40 px-3 py-2">
             <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none text-[11px]">
+              {messages.length > 0 && messages[messages.length - 1].role === "assistant" && !loading && (
+                <button
+                  onClick={() => {
+                    const lastMsg = messages[messages.length - 1];
+                    handleContinueResponse(lastMsg.content);
+                  }}
+                  className="flex shrink-0 items-center gap-1 rounded-lg border border-cyan-500/50 bg-cyan-500/15 px-2.5 py-1 text-cyan-300 hover:border-cyan-400 hover:bg-cyan-500/25 transition-colors font-semibold shadow-sm"
+                  title="Continue generating where the response stopped"
+                >
+                  <ArrowRight className="h-3 w-3 text-cyan-300" />
+                  Continue ➡️
+                </button>
+              )}
               <button
                 onClick={() => handleQuickPrompt("explain")}
                 className="flex shrink-0 items-center gap-1 rounded-lg border border-slate-700 bg-slate-800/60 px-2.5 py-1 text-slate-300 hover:border-cyan-500/50 hover:bg-slate-800 hover:text-cyan-300 transition-colors"
+                title="Deep concept breakdown: What is that, How did it come to that, Why is it like that, and Analogy"
               >
                 <Lightbulb className="h-3 w-3 text-amber-400" />
-                Explain Simply
+                Explain Concept
               </button>
               <button
                 onClick={() => handleQuickPrompt("mnemonic")}
