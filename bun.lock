@@ -5,7 +5,7 @@
     "": {
       "name": "review-flash",
       "dependencies": {
-        "@131fgh/ditroy-client": "^0.1.0",
+        "@131fgh/ditroy-client": "^0.2.0",
         "canvas-confetti": "^1.9.4",
         "clsx": "^2.1.1",
         "firebase": "^12.18.0",
@@ -33,7 +33,7 @@
     "unrs-resolver",
   ],
   "packages": {
-    "@131fgh/ditroy-client": ["@131fgh/ditroy-client@0.1.0", "", {}, "sha512-io/CGr1hxBTOiPln51h81RsPhaoRYWAb8je80d0CO6Qh8owUpPXQkYcYA/igCHDyTxXMbGpQ4AmsKY5jEalpog=="],
+    "@131fgh/ditroy-client": ["@131fgh/ditroy-client@0.2.0", "", {}, "sha512-sF8XAj4qzzyfpkx0fb8MDYlHBh3hQxXXjL/XKwN2RkVfSiWyt6TuuA0gQ6dzo2Qv82W2afZBrg8EZNUaWaSnEg=="],
 
     "@alloc/quick-lru": ["@alloc/quick-lru@5.2.0", "", {}, "sha512-UrcABB+4bUrFABwbluTIBErXwvbsU/V7TZWfmbgJfbkwiBuziS9gxdODUyuiecfdGQ85jglMW6juS3+z5TsKLw=="],
 

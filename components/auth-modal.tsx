@@ -1,10 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { auth, isFirebaseConfigured } from "@/lib/firebase";
+import { auth, facebookProvider, isFirebaseConfigured } from "@/lib/firebase";
 import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
+  signInWithPopup,
   updateProfile,
   User,
 } from "firebase/auth";
@@ -159,8 +160,48 @@ export function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
     }
   };
 
+  const handleFacebookSignIn = async () => {
+    if (!isFirebaseConfigured || !auth) {
+      setErrorMsg("Firebase is not configured. Running in local storage mode.");
+      return;
+    }
+
+    setLoading(true);
+    setErrorMsg(null);
+    setSuccessMsg(null);
+
+    try {
+      const res = await signInWithPopup(auth, facebookProvider);
+      if (res.user) {
+        setCurrentUserId(res.user.uid);
+        if (res.user.email) setCurrentUserEmail(res.user.email);
+        if (res.user.displayName) setCurrentUserName(res.user.displayName);
+        setSuccessMsg("🎉 Signed in with Facebook!");
+        setTimeout(() => {
+          onSuccess?.(res.user);
+          onClose();
+          resetForm();
+        }, 500);
+      }
+    } catch (err: unknown) {
+      const authErr = err as { code?: string; message?: string };
+      console.error("Facebook Auth Error:", authErr);
+      if (authErr?.code === "auth/account-exists-with-different-credential") {
+        setErrorMsg("An account already exists with the email associated with Facebook. Please sign in with email/password.");
+      } else if (authErr?.code === "auth/popup-closed-by-user") {
+        setErrorMsg("Facebook sign-in popup was closed before completing.");
+      } else if (authErr?.code === "auth/operation-not-allowed") {
+        setErrorMsg("Facebook login is not enabled in Firebase Console ➔ Authentication ➔ Sign-in method.");
+      } else {
+        setErrorMsg(authErr?.message || "Failed to sign in with Facebook.");
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleGoogleUnderMaintenance = () => {
-    setErrorMsg("⚠️ Google Sign-In is temporarily under maintenance. Please use Email and Password above to sign in or create an account.");
+    setErrorMsg("⚠️ Google Sign-In is temporarily under maintenance. Please use Facebook or Email & Password to sign in.");
   };
 
   return (
@@ -364,8 +405,27 @@ export function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
           <div className="flex-1 h-px bg-slate-800" />
         </div>
 
-        {/* Google Under Maintenance Button */}
-        <div className="space-y-1.5">
+        {/* OAuth Buttons (Facebook & Google) */}
+        <div className="space-y-2">
+          {/* Facebook Sign In Button */}
+          <button
+            type="button"
+            onClick={handleFacebookSignIn}
+            disabled={loading}
+            className="w-full flex items-center justify-between rounded-2xl border border-blue-600/40 bg-blue-600/10 hover:bg-blue-600/20 px-4 py-2.5 text-xs font-semibold text-blue-200 hover:text-white transition cursor-pointer group shadow-sm active:scale-[0.985]"
+          >
+            <div className="flex items-center gap-2.5">
+              <svg className="h-4 w-4 fill-[#1877F2]" viewBox="0 0 24 24">
+                <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
+              </svg>
+              <span>Continue with Facebook</span>
+            </div>
+            <span className="text-[10px] text-blue-300 font-bold bg-blue-500/20 px-2 py-0.5 rounded-full border border-blue-500/30">
+              Instant
+            </span>
+          </button>
+
+          {/* Google Under Maintenance Button */}
           <button
             type="button"
             onClick={handleGoogleUnderMaintenance}

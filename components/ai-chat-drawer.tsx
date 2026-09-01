@@ -374,10 +374,10 @@ Question: "${activeContext.question}" (Answer: "${activeContext.answer}")
       {/* Slide-over Chat Drawer */}
       {isOpen && (
         <div
-          className={`fixed bottom-0 right-0 z-50 flex flex-col border-t border-l border-slate-700/80 bg-slate-900/95 shadow-2xl backdrop-blur-xl transition-all duration-300 sm:bottom-6 sm:right-6 sm:rounded-2xl sm:border ${
+          className={`fixed bottom-0 right-0 z-50 flex flex-col border-t border-l border-slate-700/80 bg-slate-900/95 shadow-2xl backdrop-blur-xl transition-all duration-300 sm:bottom-6 sm:right-6 sm:rounded-2xl sm:border max-h-[100dvh] ${
             isExpanded
-              ? "h-[92vh] w-full sm:w-[640px]"
-              : "h-[85vh] w-full sm:h-[600px] sm:w-[440px]"
+              ? "h-[92dvh] w-full sm:w-[640px]"
+              : "h-[85dvh] w-full sm:h-[600px] sm:w-[440px]"
           }`}
         >
           {/* Header */}
@@ -687,7 +687,7 @@ Question: "${activeContext.question}" (Answer: "${activeContext.answer}")
           </div>
 
           {/* Input Area */}
-          <div className="border-t border-slate-800 p-3 bg-slate-950/80 sm:rounded-b-2xl">
+          <div className="border-t border-slate-800 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] bg-slate-950/80 sm:rounded-b-2xl">
             <form
               onSubmit={(e) => {
                 e.preventDefault();

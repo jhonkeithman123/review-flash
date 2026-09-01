@@ -12,12 +12,15 @@ import {
   ChevronRight,
   Cpu,
   GraduationCap,
+  Headphones,
   HelpCircle,
   History,
   Layers,
+  ListOrdered,
   PlusCircle,
   Rocket,
   Search,
+  Shuffle,
   Sparkles,
   Table,
   Wand2,
@@ -25,7 +28,7 @@ import {
   Zap,
 } from "lucide-react";
 
-export const CURRENT_APP_VERSION = "v1.4.0";
+export const CURRENT_APP_VERSION = "v2.0.0";
 const STORAGE_KEY = "reviewflash_last_seen_version";
 
 interface FeatureHighlight {
@@ -40,38 +43,40 @@ interface FeatureHighlight {
 
 const HIGHLIGHTS: FeatureHighlight[] = [
   {
-    icon: Wand2,
-    title: "Dual-Engine Smart Auto-Detect",
-    badge: "AI & Fast Regex",
-    badgeColor: "bg-cyan-500/20 text-cyan-300 border-cyan-500/40",
-    desc: "Toggle between instant Native Regex Detection (numbered exam lists, bold answers, delimiters) and DITroy Cloud AI (synthesize new flashcards from raw paragraphs/articles or extract messy Q&A).",
-    href: "/create",
-    actionText: "Try in Studio",
-  },
-  {
-    icon: HelpCircle,
-    title: "Help & FAQ Center with Live Playground",
-    badge: "New Center",
-    badgeColor: "bg-indigo-500/20 text-indigo-300 border-indigo-500/40",
-    desc: "Explore interactive insertion format cheat sheets, copyable study templates, searchable FAQs, and an in-browser live parsing simulator.",
-    href: "/help",
-    actionText: "Open Help Center",
-  },
-  {
-    icon: Table,
-    title: "Rich Markdown & Tables in AI Tutor",
-    badge: "Visual AI",
-    badgeColor: "bg-purple-500/20 text-purple-300 border-purple-500/40",
-    desc: "DITroy AI Study Tutor now formats analogies into styled glassmorphism data tables, highlighted mnemonic callouts, and step-by-step numbered badges.",
+    icon: Headphones,
+    title: "Study Music Lounge with YouTube Audio Engine",
+    badge: "Music Update",
+    badgeColor: "bg-emerald-500/20 text-emerald-300 border-emerald-500/40",
+    desc: "Listen to relaxing Casual Game Cozy BGM, Lo-Fi study beats, or paste full YouTube / YouTube Music playlist links! Features time scrubbers, auto-play unlock, and background persistence across pages.",
     href: "/review",
-    actionText: "Try in Review",
+    actionText: "Listen Now",
+  },
+  {
+    icon: Sparkles,
+    title: "Smart Auto-Failover & Auto-Switching",
+    badge: "Self-Healing Audio",
+    badgeColor: "bg-cyan-500/20 text-cyan-300 border-cyan-500/40",
+    desc: "If an audio stream stalls or encounters copyright embedding restrictions, the engine automatically switches to the next available working study playlist so your focus session never stops.",
+    href: "/test",
+    actionText: "Try in Test",
+  },
+  {
+    icon: Shuffle,
+    title: "Non-Resetting Persistent Quiz & Review Shuffle",
+    badge: "Smart Shuffle",
+    badgeColor: "bg-indigo-500/20 text-indigo-300 border-indigo-500/40",
+    desc: "Toggling question or card shuffle no longer resets you to Question 1! You stay on the exact card you are reviewing, and your shuffle preference is remembered in memory.",
+    href: "/test",
+    actionText: "Test Quiz",
   },
   {
     icon: Rocket,
-    title: "Dropdown-Powered Modern Navbar",
-    badge: "UI / UX",
-    badgeColor: "bg-emerald-500/20 text-emerald-300 border-emerald-500/40",
-    desc: "Refactored top bar with zero overlapping buttons, compact profile dropdown menu, quick resources menu, and custom brand logos.",
+    title: "Continue with Facebook & Mobile WebViews",
+    badge: "Social & WebViews",
+    badgeColor: "bg-blue-500/20 text-blue-300 border-blue-500/40",
+    desc: "Sign in with Facebook in 1 click! Plus full safe-area insets, 100dvh viewport support, and instant touch responses for seamless in-app browsing in Facebook and Messenger.",
+    href: "/decks",
+    actionText: "View Decks",
   },
 ];
 

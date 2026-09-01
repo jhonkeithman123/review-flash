@@ -3,10 +3,20 @@ import { Navbar } from "@/components/navbar";
 import { InteractiveTour } from "@/components/interactive-tour";
 import { AiChatDrawer } from "@/components/ai-chat-drawer";
 import { WhatsNewModal } from "@/components/whats-new-modal";
-import type { Metadata } from "next";
+import { StudyMusicPlayer } from "@/components/study-music-player";
+import type { Metadata, Viewport } from "next";
 
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 5,
+  userScalable: true,
+  viewportFit: "cover",
+  themeColor: "#090d16",
+};
 
 export const metadata: Metadata = {
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || "https://review-flash.vercel.app"),
   title: "ReviewFlash — Active Recall Flashcards & AI Tutor",
   description: "Master anything faster with AI-powered flashcards, spaced repetition, and DITroy study tutor.",
   icons: {
@@ -24,7 +34,6 @@ export const metadata: Metadata = {
   },
 };
 
-
 export default function RootLayout({
   children,
 }: {
@@ -32,14 +41,15 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className="bg-slate-950 text-slate-100 antialiased">
+      <body className="bg-slate-950 text-slate-100 antialiased min-h-dvh flex flex-col">
         <Navbar />
-        <main className="mx-auto max-w-6xl px-4 py-8">{children}</main>
+        <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-6 sm:py-8 pb-safe">{children}</main>
         <InteractiveTour />
         <WhatsNewModal />
         <AiChatDrawer />
+        <StudyMusicPlayer />
       </body>
     </html>
-
   );
 }
+

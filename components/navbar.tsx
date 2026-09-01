@@ -30,6 +30,7 @@ import {
   PlusCircle,
   Rocket,
   Share2,
+  Shield,
   Sparkles,
   User,
   UserCircle2,
@@ -207,11 +208,11 @@ export function Navbar() {
             <button
               type="button"
               onClick={handleOpenWhatsNew}
-              title="View What's New in v1.4.0"
+              title="View What's New in v1.5.0"
               className="hidden sm:inline-flex items-center gap-1 rounded-full border border-slate-800 bg-slate-900/90 px-2 py-0.5 text-[10px] font-mono font-semibold text-slate-400 hover:border-cyan-500/40 hover:text-cyan-300 transition cursor-pointer"
             >
               <Rocket size={10} className="text-cyan-400 animate-pulse" />
-              <span>v1.4.0</span>
+              <span>v1.5.0</span>
             </button>
           </div>
 
@@ -310,12 +311,23 @@ export function Navbar() {
                     <div className="flex-1">
                       <div className="flex items-center gap-1.5">
                         <span>What&apos;s New</span>
-                        <span className="rounded bg-cyan-500/20 text-cyan-300 px-1 py-0.2 text-[9px] font-bold font-mono">v1.4.0</span>
+                        <span className="rounded bg-cyan-500/20 text-cyan-300 px-1 py-0.2 text-[9px] font-bold font-mono">v2.0.0</span>
                       </div>
                       <div className="text-[10px] text-slate-400">Announcement &amp; features</div>
                     </div>
                   </button>
 
+                  <Link
+                    href="/privacy"
+                    onClick={() => setMoreDropdownOpen(false)}
+                    className="flex items-center gap-2.5 rounded-xl px-2.5 py-2 text-xs font-medium text-slate-200 hover:bg-slate-900 hover:text-white transition"
+                  >
+                    <Shield size={15} className="text-emerald-400" />
+                    <div className="flex-1">
+                      <div>Privacy &amp; Data</div>
+                      <div className="text-[10px] text-slate-400">Privacy policy &amp; deletion</div>
+                    </div>
+                  </Link>
 
                   <Link
                     href="/decks"
@@ -414,7 +426,7 @@ export function Navbar() {
                           <Rocket size={14} className="text-amber-400" />
                           <div className="flex items-center justify-between flex-1">
                             <span>What&apos;s New</span>
-                            <span className="text-[10px] font-mono text-cyan-300 font-bold">v1.4.0</span>
+                            <span className="text-[10px] font-mono text-cyan-300 font-bold">v1.5.0</span>
                           </div>
                         </button>
                       </div>
@@ -608,7 +620,22 @@ export function Navbar() {
                   <Rocket size={16} className={pathname === "/updates" ? "text-cyan-300" : "text-slate-400"} />
                   <span>Updates &amp; Changelog</span>
                 </div>
-                <span className="rounded bg-cyan-500/20 text-cyan-300 px-1.5 py-0.5 text-[10px] font-bold font-mono">v1.4.0</span>
+                <span className="rounded bg-cyan-500/20 text-cyan-300 px-1.5 py-0.5 text-[10px] font-bold font-mono">v2.0.0</span>
+              </Link>
+
+              <Link
+                href="/privacy"
+                onClick={() => setMobileMenuOpen(false)}
+                className={`flex items-center justify-between rounded-xl px-3.5 py-2.5 text-sm font-medium transition ${
+                  pathname === "/privacy"
+                    ? "border border-cyan-500/50 bg-cyan-500/10 text-cyan-300 shadow-sm"
+                    : "text-slate-300 hover:bg-slate-900 hover:text-white"
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <Shield size={16} className={pathname === "/privacy" ? "text-cyan-300" : "text-slate-400"} />
+                  <span>Privacy Policy &amp; Data</span>
+                </div>
               </Link>
             </div>
 

@@ -3,6 +3,7 @@ import {
   getAuth,
   Auth,
   GoogleAuthProvider,
+  FacebookAuthProvider,
   browserLocalPersistence,
   setPersistence,
 } from "firebase/auth";
@@ -28,10 +29,14 @@ let app: FirebaseApp | null = null;
 let db: Firestore | null = null;
 let auth: Auth | null = null;
 const googleProvider = new GoogleAuthProvider();
+const facebookProvider = new FacebookAuthProvider();
 
 googleProvider.addScope("profile");
 googleProvider.addScope("email");
 googleProvider.setCustomParameters({ prompt: "select_account" });
+
+facebookProvider.addScope("email");
+facebookProvider.addScope("public_profile");
 
 if (typeof window !== "undefined" || isFirebaseConfigured) {
   try {
@@ -53,4 +58,4 @@ if (typeof window !== "undefined" || isFirebaseConfigured) {
   }
 }
 
-export { app, db, auth, googleProvider };
+export { app, db, auth, googleProvider, facebookProvider };

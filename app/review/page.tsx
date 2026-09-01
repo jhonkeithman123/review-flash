@@ -94,20 +94,39 @@ function ReviewContent() {
   const handleToggleShuffle = () => {
     const nextShuffle = !isShuffleActive;
     setIsShuffleActive(nextShuffle);
+    try {
+      localStorage.setItem("rf_review_shuffle", JSON.stringify(nextShuffle));
+    } catch {}
+
+    const currentlyViewedCard = activeCards[currentIndex];
+    let newCardList: Flashcard[] = [];
+
     if (nextShuffle) {
-      setActiveCards(shuffleArray(activeCards));
+      newCardList = shuffleArray(activeCards);
     } else {
       const baseCards = selectedDeckId === "all"
         ? allCards
         : activeDeck ? activeDeck.cards : allCards;
-      setActiveCards(baseCards);
+      newCardList = baseCards;
     }
-    setCurrentIndex(0);
+
+    setActiveCards(newCardList);
+
+    // Keep user on the exact card they were studying
+    if (currentlyViewedCard) {
+      const newIdx = newCardList.findIndex((c) => c.id === currentlyViewedCard.id);
+      setCurrentIndex(newIdx >= 0 ? newIdx : 0);
+    }
   };
 
   const handleReshuffleSession = () => {
-    setActiveCards(shuffleArray(activeCards));
-    setCurrentIndex(0);
+    const currentlyViewedCard = activeCards[currentIndex];
+    const reshuffled = shuffleArray(activeCards);
+    setActiveCards(reshuffled);
+    if (currentlyViewedCard) {
+      const newIdx = reshuffled.findIndex((c) => c.id === currentlyViewedCard.id);
+      setCurrentIndex(newIdx >= 0 ? newIdx : 0);
+    }
   };
 
   const handleSelectDeck = (deckId: string) => {

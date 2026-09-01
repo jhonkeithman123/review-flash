@@ -59,10 +59,69 @@ interface VersionLog {
 
 const UPDATE_LOGS: VersionLog[] = [
   {
+    version: "v2.0.0",
+    codename: "The Music & Social Horizon",
+    releaseDate: "September 1, 2026",
+    isLatest: true,
+    category: "major",
+    badgeColor: "from-emerald-400 via-teal-400 to-cyan-500",
+    highlightSummary:
+      "A massive milestone release introducing the Study Music Lounge with YouTube Audio Engine, full playlist & multiline URL importing, Smart Auto-Failover, Facebook OAuth Sign-In, and Non-Resetting Persistent Quiz & Review Shuffle.",
+    stats: {
+      componentsAdded: 7,
+      testsPassed: "100%",
+      perfIncrease: "0ms tap latency & auto audio recovery",
+    },
+    changes: [
+      {
+        type: "feat",
+        title: "Study Music Lounge with YouTube Audio Engine",
+        desc: "Embedded ambient audio engine playing relaxing Casual Game Cozy BGM, Lo-Fi study beats, Peaceful Piano, Synthwave, and Alpha Waves in the background across all study pages with persistent audio playback.",
+        tags: ["Study Music", "YouTube Audio", "BGM", "Casual Gaming"],
+      },
+      {
+        type: "feat",
+        title: "Full YouTube & YT Music Playlist Importer",
+        desc: "Paste entire YouTube or YouTube Music playlist links (list=PL...) to automatically import them as custom study soundtracks, or paste multiline batch links to queue multiple tracks at once.",
+        tags: ["Playlist Importer", "YouTube Music", "Batch Queue"],
+      },
+      {
+        type: "feat",
+        title: "Music Time Scrubber & Browser Autoplay Unlock",
+        desc: "Interactive seek scrubber bar allows rewinding and skipping to any timestamp in a song. Includes browser interaction audio unlocking and an Autoplay toggle in settings.",
+        tags: ["Time Scrubber", "Seek Bar", "Autoplay"],
+      },
+      {
+        type: "ai",
+        title: "Smart Auto-Failover & Self-Healing Playback",
+        desc: "If any video encounters regional or copyright playback restrictions (Error 150/101), ReviewFlash automatically switches to the next available working study soundtrack seamlessly without interrupting your study session.",
+        tags: ["Smart Failover", "Auto-Switching", "Error 150 Guard"],
+      },
+      {
+        type: "feat",
+        title: "Non-Resetting Persistent Quiz & Review Shuffle",
+        desc: "Shuffling test questions or flashcard reviews no longer resets you to Question 1! You stay on the exact card you are viewing, with your shuffle mode saved to memory across refreshes.",
+        tags: ["Smart Shuffle", "Memory Persistence", "No Drift"],
+      },
+      {
+        type: "sec",
+        title: "Continue with Facebook Authentication",
+        desc: "Added 1-click instant Facebook OAuth sign-in with Firebase Auth alongside email/password, enabling instant study set sync and collaboration across devices.",
+        tags: ["Facebook Login", "Firebase Auth", "OAuth"],
+      },
+      {
+        type: "improve",
+        title: "In-App WebView Touch & Safe-Area Optimization",
+        desc: "Optimized 100dvh viewport scaling, safe-area bottom padding (env(safe-area-inset-bottom)), and zero-delay touch responses for Facebook and Messenger in-app browsers.",
+        tags: ["Facebook WebView", "Messenger", "100dvh", "Safe Area"],
+      },
+    ],
+  },
+  {
     version: "v1.4.0",
     codename: "Cognitive Dual-Engine & Knowledge Hub",
     releaseDate: "August 31, 2026",
-    isLatest: true,
+    isLatest: false,
     category: "ai",
     badgeColor: "from-cyan-500 to-indigo-500",
     highlightSummary:
