@@ -3,9 +3,13 @@
 import { useState } from "react";
 import { auth, facebookProvider, isFirebaseConfigured } from "@/lib/firebase";
 import {
+  AuthCredential,
   createUserWithEmailAndPassword,
+  FacebookAuthProvider,
+  linkWithCredential,
   signInWithEmailAndPassword,
   signInWithPopup,
+  signInWithRedirect,
   updateProfile,
   User,
 } from "firebase/auth";
@@ -20,9 +24,11 @@ import {
   Check,
   Eye,
   EyeOff,
+  Link2,
   Lock,
   LogIn,
   Mail,
+  ShieldCheck,
   User as UserIcon,
   UserPlus,
   Wrench,
@@ -46,6 +52,13 @@ export function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
+  // Account Linking State
+  const [isLinkingMode, setIsLinkingMode] = useState(false);
+  const [pendingCredential, setPendingCredential] = useState<AuthCredential | null>(null);
+  const [pendingEmail, setPendingEmail] = useState<string>("");
+  const [linkPassword, setLinkPassword] = useState("");
+  const [showLinkPassword, setShowLinkPassword] = useState(false);
+
   if (!isOpen) return null;
 
   const resetForm = () => {
@@ -53,14 +66,65 @@ export function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
     setEmail("");
     setPassword("");
     setConfirmPassword("");
+    setLinkPassword("");
+    setIsLinkingMode(false);
+    setPendingCredential(null);
+    setPendingEmail("");
     setErrorMsg(null);
     setSuccessMsg(null);
   };
 
   const handleSwitchTab = (nextTab: "signin" | "signup") => {
     setTab(nextTab);
+    setIsLinkingMode(false);
     setErrorMsg(null);
     setSuccessMsg(null);
+  };
+
+  const handleLinkAccount = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!auth || !pendingCredential || !pendingEmail) return;
+
+    if (!linkPassword.trim()) {
+      setErrorMsg("Please enter your existing password to verify and link.");
+      return;
+    }
+
+    setLoading(true);
+    setErrorMsg(null);
+
+    try {
+      // 1. Sign in with existing email/password
+      const userCred = await signInWithEmailAndPassword(auth, pendingEmail, linkPassword.trim());
+
+      // 2. Link the Facebook credential to this existing user account
+      await linkWithCredential(userCred.user, pendingCredential);
+
+      setCurrentUserId(userCred.user.uid);
+      if (userCred.user.email) setCurrentUserEmail(userCred.user.email);
+      if (userCred.user.displayName) setCurrentUserName(userCred.user.displayName);
+
+      setSuccessMsg("🎉 Facebook successfully linked! You can now log in with either Email or Facebook.");
+      setTimeout(() => {
+        onSuccess?.(userCred.user);
+        onClose();
+        resetForm();
+      }, 900);
+    } catch (err: unknown) {
+      const linkErr = err as { code?: string; message?: string };
+      console.error("Account linking error:", linkErr);
+      if (
+        linkErr?.code === "auth/wrong-password" ||
+        linkErr?.code === "auth/invalid-credential" ||
+        linkErr?.code === "auth/user-not-found"
+      ) {
+        setErrorMsg("Incorrect password. Please enter the password associated with this email.");
+      } else {
+        setErrorMsg(linkErr?.message || "Failed to link accounts. Please try again.");
+      }
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleEmailAuth = async (e: React.FormEvent) => {
@@ -117,7 +181,7 @@ export function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
           onSuccess?.(res.user);
           onClose();
           resetForm();
-        }, 600);
+        }, 500);
       } else {
         // Sign in
         const res = await signInWithEmailAndPassword(auth, cleanEmail, cleanPass);
@@ -125,7 +189,7 @@ export function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
         if (res.user.email) setCurrentUserEmail(res.user.email);
         if (res.user.displayName) setCurrentUserName(res.user.displayName);
 
-        setSuccessMsg("✅ Signed in successfully!");
+        setSuccessMsg("🎉 Signed in successfully!");
         setTimeout(() => {
           onSuccess?.(res.user);
           onClose();
@@ -134,18 +198,17 @@ export function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
       }
     } catch (err: unknown) {
       const authErr = err as { code?: string; message?: string };
-      console.error("Auth error:", authErr);
-
+      console.error("Auth Error:", authErr);
       if (authErr?.code === "auth/email-already-in-use") {
-        setErrorMsg("This email is already in use. Please sign in instead.");
+        setErrorMsg("This email is already registered. Please sign in instead.");
       } else if (authErr?.code === "auth/invalid-email") {
-        setErrorMsg("Please enter a valid email address.");
+        setErrorMsg("Invalid email format. Please check and try again.");
       } else if (authErr?.code === "auth/weak-password") {
         setErrorMsg("Password is too weak. Please use at least 6 characters.");
       } else if (
+        authErr?.code === "auth/invalid-credential" ||
         authErr?.code === "auth/user-not-found" ||
-        authErr?.code === "auth/wrong-password" ||
-        authErr?.code === "auth/invalid-credential"
+        authErr?.code === "auth/wrong-password"
       ) {
         setErrorMsg("Incorrect email or password. Please check and try again.");
       } else if (authErr?.code === "auth/operation-not-allowed") {
@@ -184,12 +247,33 @@ export function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
         }, 500);
       }
     } catch (err: unknown) {
-      const authErr = err as { code?: string; message?: string };
-      console.error("Facebook Auth Error:", authErr);
-      if (authErr?.code === "auth/account-exists-with-different-credential") {
-        setErrorMsg("An account already exists with the email associated with Facebook. Please sign in with email/password.");
+      const authErr = err as { code?: string; message?: string; customData?: { email?: string } };
+      console.warn("Facebook Auth Note:", authErr?.code || authErr);
+
+      if (authErr?.code === "auth/popup-blocked") {
+        try {
+          await signInWithRedirect(auth, facebookProvider);
+          return;
+        } catch (redirectErr) {
+          console.error("Facebook Redirect Auth Error:", redirectErr);
+          setErrorMsg("Popups are blocked by your browser. Please allow popups or sign in with Email.");
+        }
       } else if (authErr?.code === "auth/popup-closed-by-user") {
-        setErrorMsg("Facebook sign-in popup was closed before completing.");
+        setErrorMsg("Facebook sign-in was cancelled before completion. Please try again.");
+      } else if (authErr?.code === "auth/account-exists-with-different-credential") {
+        const pendingCred =
+          FacebookAuthProvider.credentialFromError(err as any) || (authErr as any)?.credential;
+        const targetEmail = authErr?.customData?.email || (err as any)?.email;
+
+        if (pendingCred && targetEmail) {
+          setPendingCredential(pendingCred);
+          setPendingEmail(targetEmail);
+          setIsLinkingMode(true);
+          setErrorMsg(null);
+          setSuccessMsg("Account exists! Enter your password below to link Facebook permanently.");
+        } else {
+          setErrorMsg("An account already exists with this email. Please sign in with Email/Password to link Facebook.");
+        }
       } else if (authErr?.code === "auth/operation-not-allowed") {
         setErrorMsg("Facebook login is not enabled in Firebase Console ➔ Authentication ➔ Sign-in method.");
       } else {
@@ -232,56 +316,145 @@ export function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
             />
           </div>
           <h2 className="text-2xl font-bold text-white tracking-tight">
-            {tab === "signin" ? "Welcome Back" : "Create an Account"}
+            {isLinkingMode
+              ? "Link Social Account"
+              : tab === "signin"
+              ? "Welcome Back"
+              : "Create an Account"}
           </h2>
 
           <p className="mt-1 text-xs text-slate-400">
-            {tab === "signin"
+            {isLinkingMode
+              ? `Connect your Facebook login to ${pendingEmail}`
+              : tab === "signin"
               ? "Sign in to sync your study sets and collaborate across devices"
               : "Sign up to create, edit, and share flashcard decks"}
           </p>
         </div>
 
-        {/* Tab Switcher */}
-        <div className="mb-5 flex rounded-2xl bg-slate-950 p-1 border border-slate-800">
-          <button
-            type="button"
-            onClick={() => handleSwitchTab("signin")}
-            className={`flex-1 rounded-xl py-2 text-xs font-bold transition cursor-pointer ${
-              tab === "signin"
-                ? "bg-cyan-500 text-slate-950 shadow-md"
-                : "text-slate-400 hover:text-white"
-            }`}
-          >
-            Sign In
-          </button>
-          <button
-            type="button"
-            onClick={() => handleSwitchTab("signup")}
-            className={`flex-1 rounded-xl py-2 text-xs font-bold transition cursor-pointer ${
-              tab === "signup"
-                ? "bg-cyan-500 text-slate-950 shadow-md"
-                : "text-slate-400 hover:text-white"
-            }`}
-          >
-            Create Account
-          </button>
-        </div>
+        {isLinkingMode ? (
+          /* Account Linking Flow */
+          <div className="space-y-4">
+            <div className="rounded-2xl border border-blue-500/40 bg-blue-950/20 p-4 space-y-2 text-xs">
+              <div className="flex items-center gap-2 font-bold text-blue-300">
+                <Link2 size={16} className="text-blue-400" />
+                <span>Account Already Exists</span>
+              </div>
+              <p className="text-slate-300 leading-relaxed">
+                An account with email <strong className="text-white font-mono">{pendingEmail}</strong> was created with a password. Enter your password once to link your Facebook account permanently!
+              </p>
+            </div>
 
-        {/* Error / Success Feedback */}
-        {errorMsg && (
-          <div className="mb-4 flex items-start gap-2.5 rounded-2xl border border-rose-500/40 bg-rose-500/10 p-3 text-xs text-rose-200 animate-in fade-in">
-            <AlertCircle size={15} className="shrink-0 mt-0.5 text-rose-400" />
-            <span>{errorMsg}</span>
-          </div>
-        )}
+            {errorMsg && (
+              <div className="flex items-start gap-2.5 rounded-2xl border border-rose-500/40 bg-rose-500/10 p-3 text-xs text-rose-200 animate-in fade-in">
+                <AlertCircle size={15} className="shrink-0 mt-0.5 text-rose-400" />
+                <span>{errorMsg}</span>
+              </div>
+            )}
 
-        {successMsg && (
-          <div className="mb-4 flex items-center gap-2.5 rounded-2xl border border-emerald-500/40 bg-emerald-500/10 p-3 text-xs text-emerald-200 animate-in fade-in">
-            <Check size={15} className="shrink-0 text-emerald-400" />
-            <span>{successMsg}</span>
+            {successMsg && (
+              <div className="flex items-center gap-2.5 rounded-2xl border border-emerald-500/40 bg-emerald-500/10 p-3 text-xs text-emerald-200 animate-in fade-in">
+                <Check size={15} className="shrink-0 text-emerald-400" />
+                <span>{successMsg}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleLinkAccount} className="space-y-3.5">
+              <div>
+                <label className="mb-1 block text-xs font-medium text-slate-300">
+                  Account Password for {pendingEmail}
+                </label>
+                <div className="relative">
+                  <Lock size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500" />
+                  <input
+                    type={showLinkPassword ? "text" : "password"}
+                    required
+                    value={linkPassword}
+                    onChange={(e) => setLinkPassword(e.target.value)}
+                    placeholder="Enter existing account password"
+                    className="w-full rounded-2xl border border-slate-700 bg-slate-950 py-2.5 pl-10 pr-10 text-xs text-slate-100 placeholder:text-slate-500 outline-none focus:border-cyan-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowLinkPassword(!showLinkPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white cursor-pointer"
+                  >
+                    {showLinkPassword ? <EyeOff size={14} /> : <Eye size={14} />}
+                  </button>
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-blue-600 to-cyan-500 py-3 text-xs font-bold text-white shadow-lg shadow-blue-500/20 transition hover:brightness-110 disabled:opacity-60 cursor-pointer"
+              >
+                {loading ? (
+                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                ) : (
+                  <>
+                    <ShieldCheck size={15} />
+                    <span>Link Facebook &amp; Sign In</span>
+                  </>
+                )}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setIsLinkingMode(false);
+                  setPendingCredential(null);
+                  setPendingEmail("");
+                  setErrorMsg(null);
+                }}
+                className="w-full text-center text-xs text-slate-400 hover:text-white transition py-1 cursor-pointer"
+              >
+                Cancel and return to standard sign-in
+              </button>
+            </form>
           </div>
-        )}
+        ) : (
+          <>
+            {/* Tab Switcher */}
+            <div className="mb-5 flex rounded-2xl bg-slate-950 p-1 border border-slate-800">
+              <button
+                type="button"
+                onClick={() => handleSwitchTab("signin")}
+                className={`flex-1 rounded-xl py-2 text-xs font-bold transition cursor-pointer ${
+                  tab === "signin"
+                    ? "bg-cyan-500 text-slate-950 shadow-md"
+                    : "text-slate-400 hover:text-white"
+                }`}
+              >
+                Sign In
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSwitchTab("signup")}
+                className={`flex-1 rounded-xl py-2 text-xs font-bold transition cursor-pointer ${
+                  tab === "signup"
+                    ? "bg-cyan-500 text-slate-950 shadow-md"
+                    : "text-slate-400 hover:text-white"
+                }`}
+              >
+                Create Account
+              </button>
+            </div>
+
+            {/* Error / Success Feedback */}
+            {errorMsg && (
+              <div className="mb-4 flex items-start gap-2.5 rounded-2xl border border-rose-500/40 bg-rose-500/10 p-3 text-xs text-rose-200 animate-in fade-in">
+                <AlertCircle size={15} className="shrink-0 mt-0.5 text-rose-400" />
+                <span>{errorMsg}</span>
+              </div>
+            )}
+
+            {successMsg && (
+              <div className="mb-4 flex items-center gap-2.5 rounded-2xl border border-emerald-500/40 bg-emerald-500/10 p-3 text-xs text-emerald-200 animate-in fade-in">
+                <Check size={15} className="shrink-0 text-emerald-400" />
+                <span>{successMsg}</span>
+              </div>
+            )}
 
         {/* Email & Password Form */}
         <form onSubmit={handleEmailAuth} className="space-y-3.5">
@@ -485,6 +658,8 @@ export function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
             </>
           )}
         </p>
+          </>
+        )}
       </div>
     </div>
   );
