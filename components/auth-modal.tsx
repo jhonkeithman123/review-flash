@@ -24,6 +24,7 @@ import {
   Check,
   Eye,
   EyeOff,
+  Globe,
   Link2,
   Lock,
   LogIn,
@@ -51,6 +52,7 @@ export function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [isPopupBlocked, setIsPopupBlocked] = useState(false);
 
   // Account Linking State
   const [isLinkingMode, setIsLinkingMode] = useState(false);
@@ -68,6 +70,7 @@ export function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
     setConfirmPassword("");
     setLinkPassword("");
     setIsLinkingMode(false);
+    setIsPopupBlocked(false);
     setPendingCredential(null);
     setPendingEmail("");
     setErrorMsg(null);
@@ -77,6 +80,7 @@ export function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
   const handleSwitchTab = (nextTab: "signin" | "signup") => {
     setTab(nextTab);
     setIsLinkingMode(false);
+    setIsPopupBlocked(false);
     setErrorMsg(null);
     setSuccessMsg(null);
   };
@@ -251,7 +255,8 @@ export function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
       console.warn("Facebook Auth Note:", authErr?.code || authErr);
 
       if (authErr?.code === "auth/popup-blocked") {
-        setErrorMsg("The login popup was blocked by your browser. Please click the popup icon in your address bar to allow popups for this site and try again.");
+        setIsPopupBlocked(true);
+        setErrorMsg("Your browser blocked the popup. Click below to continue using full-page login:");
       } else if (authErr?.code === "auth/popup-closed-by-user") {
         setErrorMsg("Facebook sign-in was cancelled before completion. Please try again.");
       } else if (authErr?.code === "auth/account-exists-with-different-credential") {
@@ -284,14 +289,31 @@ export function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
     }
   };
 
+  const handleFacebookRedirectSignIn = async () => {
+    if (!isFirebaseConfigured || !auth) {
+      setErrorMsg("Firebase is not configured.");
+      return;
+    }
+    setLoading(true);
+    setErrorMsg(null);
+    try {
+      await signInWithRedirect(auth, facebookProvider);
+    } catch (err: unknown) {
+      const authErr = err as { code?: string; message?: string };
+      console.error("Facebook Redirect Auth Error:", authErr);
+      setErrorMsg(authErr?.message || "Failed to start redirect login.");
+      setLoading(false);
+    }
+  };
+
   const handleGoogleUnderMaintenance = () => {
     setErrorMsg("⚠️ Google Sign-In is temporarily under maintenance. Please use Facebook or Email & Password to sign in.");
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-in fade-in duration-150">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-md overflow-y-auto animate-in fade-in duration-150">
       <div
-        className="relative w-full max-w-md rounded-3xl border border-slate-800 bg-slate-900/95 p-6 sm:p-8 shadow-2xl backdrop-blur-2xl animate-in zoom-in-95 duration-150"
+        className="relative w-full max-w-md max-h-[92vh] flex flex-col rounded-3xl border border-slate-800 bg-slate-900/95 p-5 sm:p-6 shadow-2xl backdrop-blur-2xl overflow-y-auto my-auto scrollbar-thin"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Close Button */}
@@ -301,21 +323,21 @@ export function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
             onClose();
             resetForm();
           }}
-          className="absolute right-5 top-5 rounded-full p-1.5 text-slate-400 hover:bg-slate-800 hover:text-white transition cursor-pointer"
+          className="absolute right-4 top-4 rounded-full p-1.5 text-slate-400 hover:bg-slate-800 hover:text-white transition cursor-pointer z-10"
         >
           <X size={18} />
         </button>
 
         {/* Brand / Title Header */}
-        <div className="text-center mb-6">
-          <div className="mx-auto mb-3 inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-900 border border-cyan-500/40 p-1.5 shadow-xl shadow-cyan-500/20 overflow-hidden">
+        <div className="text-center mb-4 shrink-0">
+          <div className="mx-auto mb-2 inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-900 border border-cyan-500/40 p-1 shadow-xl shadow-cyan-500/20 overflow-hidden">
             <img
               src="/favicon.png"
               alt="ReviewFlash Logo"
               className="h-full w-full object-contain rounded-xl"
             />
           </div>
-          <h2 className="text-2xl font-bold text-white tracking-tight">
+          <h2 className="text-xl sm:text-2xl font-bold text-white tracking-tight">
             {isLinkingMode
               ? "Link Social Account"
               : tab === "signin"
@@ -323,7 +345,7 @@ export function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
               : "Create an Account"}
           </h2>
 
-          <p className="mt-1 text-xs text-slate-400">
+          <p className="mt-0.5 text-xs text-slate-400">
             {isLinkingMode
               ? `Connect your Facebook login to ${pendingEmail}`
               : tab === "signin"
@@ -334,52 +356,52 @@ export function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
 
         {isLinkingMode ? (
           /* Account Linking Flow */
-          <div className="space-y-4">
-            <div className="rounded-2xl border border-blue-500/40 bg-blue-950/20 p-4 space-y-2 text-xs">
+          <div className="space-y-3.5">
+            <div className="rounded-2xl border border-blue-500/40 bg-blue-950/20 p-3.5 space-y-1.5 text-xs">
               <div className="flex items-center gap-2 font-bold text-blue-300">
-                <Link2 size={16} className="text-blue-400" />
+                <Link2 size={15} className="text-blue-400" />
                 <span>Account Already Exists</span>
               </div>
-              <p className="text-slate-300 leading-relaxed">
+              <p className="text-slate-300 leading-relaxed text-[11px]">
                 An account with email <strong className="text-white font-mono">{pendingEmail}</strong> was created with a password. Enter your password once to link your Facebook account permanently!
               </p>
             </div>
 
             {errorMsg && (
-              <div className="flex items-start gap-2.5 rounded-2xl border border-rose-500/40 bg-rose-500/10 p-3 text-xs text-rose-200 animate-in fade-in">
-                <AlertCircle size={15} className="shrink-0 mt-0.5 text-rose-400" />
+              <div className="flex items-start gap-2 rounded-2xl border border-rose-500/40 bg-rose-500/10 p-2.5 text-xs text-rose-200 animate-in fade-in">
+                <AlertCircle size={14} className="shrink-0 mt-0.5 text-rose-400" />
                 <span>{errorMsg}</span>
               </div>
             )}
 
             {successMsg && (
-              <div className="flex items-center gap-2.5 rounded-2xl border border-emerald-500/40 bg-emerald-500/10 p-3 text-xs text-emerald-200 animate-in fade-in">
-                <Check size={15} className="shrink-0 text-emerald-400" />
+              <div className="flex items-center gap-2 rounded-2xl border border-emerald-500/40 bg-emerald-500/10 p-2.5 text-xs text-emerald-200 animate-in fade-in">
+                <Check size={14} className="shrink-0 text-emerald-400" />
                 <span>{successMsg}</span>
               </div>
             )}
 
-            <form onSubmit={handleLinkAccount} className="space-y-3.5">
+            <form onSubmit={handleLinkAccount} className="space-y-3">
               <div>
                 <label className="mb-1 block text-xs font-medium text-slate-300">
                   Account Password for {pendingEmail}
                 </label>
                 <div className="relative">
-                  <Lock size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500" />
+                  <Lock size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500" />
                   <input
                     type={showLinkPassword ? "text" : "password"}
                     required
                     value={linkPassword}
                     onChange={(e) => setLinkPassword(e.target.value)}
                     placeholder="Enter existing account password"
-                    className="w-full rounded-2xl border border-slate-700 bg-slate-950 py-2.5 pl-10 pr-10 text-xs text-slate-100 placeholder:text-slate-500 outline-none focus:border-cyan-500"
+                    className="w-full rounded-2xl border border-slate-700 bg-slate-950 py-2 pl-9 pr-9 text-xs text-slate-100 placeholder:text-slate-500 outline-none focus:border-cyan-500"
                   />
                   <button
                     type="button"
                     onClick={() => setShowLinkPassword(!showLinkPassword)}
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white cursor-pointer"
                   >
-                    {showLinkPassword ? <EyeOff size={14} /> : <Eye size={14} />}
+                    {showLinkPassword ? <EyeOff size={13} /> : <Eye size={13} />}
                   </button>
                 </div>
               </div>
@@ -387,13 +409,13 @@ export function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-blue-600 to-cyan-500 py-3 text-xs font-bold text-white shadow-lg shadow-blue-500/20 transition hover:brightness-110 disabled:opacity-60 cursor-pointer"
+                className="w-full flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-blue-600 to-cyan-500 py-2.5 text-xs font-bold text-white shadow-lg shadow-blue-500/20 transition hover:brightness-110 disabled:opacity-60 cursor-pointer"
               >
                 {loading ? (
                   <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
                 ) : (
                   <>
-                    <ShieldCheck size={15} />
+                    <ShieldCheck size={14} />
                     <span>Link Facebook &amp; Sign In</span>
                   </>
                 )}
@@ -407,7 +429,7 @@ export function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
                   setPendingEmail("");
                   setErrorMsg(null);
                 }}
-                className="w-full text-center text-xs text-slate-400 hover:text-white transition py-1 cursor-pointer"
+                className="w-full text-center text-xs text-slate-400 hover:text-white transition py-0.5 cursor-pointer"
               >
                 Cancel and return to standard sign-in
               </button>
@@ -416,11 +438,11 @@ export function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
         ) : (
           <>
             {/* Tab Switcher */}
-            <div className="mb-5 flex rounded-2xl bg-slate-950 p-1 border border-slate-800">
+            <div className="mb-4 flex rounded-2xl bg-slate-950 p-1 border border-slate-800 shrink-0">
               <button
                 type="button"
                 onClick={() => handleSwitchTab("signin")}
-                className={`flex-1 rounded-xl py-2 text-xs font-bold transition cursor-pointer ${
+                className={`flex-1 rounded-xl py-1.5 text-xs font-bold transition cursor-pointer ${
                   tab === "signin"
                     ? "bg-cyan-500 text-slate-950 shadow-md"
                     : "text-slate-400 hover:text-white"
@@ -431,7 +453,7 @@ export function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
               <button
                 type="button"
                 onClick={() => handleSwitchTab("signup")}
-                className={`flex-1 rounded-xl py-2 text-xs font-bold transition cursor-pointer ${
+                className={`flex-1 rounded-xl py-1.5 text-xs font-bold transition cursor-pointer ${
                   tab === "signup"
                     ? "bg-cyan-500 text-slate-950 shadow-md"
                     : "text-slate-400 hover:text-white"
@@ -443,221 +465,234 @@ export function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
 
             {/* Error / Success Feedback */}
             {errorMsg && (
-              <div className="mb-4 flex items-start gap-2.5 rounded-2xl border border-rose-500/40 bg-rose-500/10 p-3 text-xs text-rose-200 animate-in fade-in">
-                <AlertCircle size={15} className="shrink-0 mt-0.5 text-rose-400" />
-                <span>{errorMsg}</span>
+              <div className="mb-3 flex flex-col gap-2 rounded-2xl border border-rose-500/40 bg-rose-500/10 p-3 text-xs text-rose-200 animate-in fade-in">
+                <div className="flex items-start gap-2">
+                  <AlertCircle size={14} className="shrink-0 mt-0.5 text-rose-400" />
+                  <span className="leading-snug">{errorMsg}</span>
+                </div>
+                {isPopupBlocked && (
+                  <button
+                    type="button"
+                    onClick={handleFacebookRedirectSignIn}
+                    disabled={loading}
+                    className="mt-1 w-full flex items-center justify-center gap-2 rounded-xl bg-blue-600 hover:bg-blue-500 py-2 px-3 text-xs font-bold text-white transition shadow-md cursor-pointer"
+                  >
+                    <Globe size={13} />
+                    <span>Continue with Full-Page Facebook Login ➔</span>
+                  </button>
+                )}
               </div>
             )}
 
             {successMsg && (
-              <div className="mb-4 flex items-center gap-2.5 rounded-2xl border border-emerald-500/40 bg-emerald-500/10 p-3 text-xs text-emerald-200 animate-in fade-in">
-                <Check size={15} className="shrink-0 text-emerald-400" />
+              <div className="mb-3 flex items-center gap-2 rounded-2xl border border-emerald-500/40 bg-emerald-500/10 p-2.5 text-xs text-emerald-200 animate-in fade-in">
+                <Check size={14} className="shrink-0 text-emerald-400" />
                 <span>{successMsg}</span>
               </div>
             )}
 
-        {/* Email & Password Form */}
-        <form onSubmit={handleEmailAuth} className="space-y-3.5">
-          {tab === "signup" && (
-            <div>
-              <label className="mb-1 block text-xs font-medium text-slate-300">
-                Full Name / Username
-              </label>
-              <div className="relative">
-                <UserIcon
-                  size={15}
-                  className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500"
-                />
-                <input
-                  type="text"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="e.g. Keith Man"
-                  className="w-full rounded-2xl border border-slate-700 bg-slate-950 py-2.5 pl-10 pr-3 text-xs text-slate-100 placeholder:text-slate-500 outline-none focus:border-cyan-500"
-                />
+            {/* Email & Password Form */}
+            <form onSubmit={handleEmailAuth} className="space-y-2.5">
+              {tab === "signup" && (
+                <div>
+                  <label className="mb-1 block text-[11px] font-medium text-slate-300">
+                    Full Name / Username
+                  </label>
+                  <div className="relative">
+                    <UserIcon
+                      size={14}
+                      className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500"
+                    />
+                    <input
+                      type="text"
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      placeholder="e.g. Keith Man"
+                      className="w-full rounded-2xl border border-slate-700 bg-slate-950 py-2 pl-9 pr-3 text-xs text-slate-100 placeholder:text-slate-500 outline-none focus:border-cyan-500"
+                    />
+                  </div>
+                </div>
+              )}
+
+              <div>
+                <label className="mb-1 block text-[11px] font-medium text-slate-300">
+                  Email Address <span className="text-rose-400">*</span>
+                </label>
+                <div className="relative">
+                  <Mail
+                    size={14}
+                    className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500"
+                  />
+                  <input
+                    type="email"
+                    required
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="name@example.com"
+                    className="w-full rounded-2xl border border-slate-700 bg-slate-950 py-2 pl-9 pr-3 text-xs text-slate-100 placeholder:text-slate-500 outline-none focus:border-cyan-500"
+                  />
+                </div>
               </div>
-            </div>
-          )}
 
-          <div>
-            <label className="mb-1 block text-xs font-medium text-slate-300">
-              Email Address <span className="text-rose-400">*</span>
-            </label>
-            <div className="relative">
-              <Mail
-                size={15}
-                className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500"
-              />
-              <input
-                type="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="name@example.com"
-                className="w-full rounded-2xl border border-slate-700 bg-slate-950 py-2.5 pl-10 pr-3 text-xs text-slate-100 placeholder:text-slate-500 outline-none focus:border-cyan-500"
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="mb-1 block text-xs font-medium text-slate-300">
-              Password <span className="text-rose-400">*</span>
-            </label>
-            <div className="relative">
-              <Lock
-                size={15}
-                className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500"
-              />
-              <input
-                type={showPassword ? "text" : "password"}
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder={tab === "signup" ? "At least 6 characters" : "••••••••"}
-                className="w-full rounded-2xl border border-slate-700 bg-slate-950 py-2.5 pl-10 pr-10 text-xs text-slate-100 placeholder:text-slate-500 outline-none focus:border-cyan-500"
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white cursor-pointer"
-              >
-                {showPassword ? <EyeOff size={14} /> : <Eye size={14} />}
-              </button>
-            </div>
-          </div>
-
-          {tab === "signup" && (
-            <div>
-              <label className="mb-1 block text-xs font-medium text-slate-300">
-                Confirm Password <span className="text-rose-400">*</span>
-              </label>
-              <div className="relative">
-                <Lock
-                  size={15}
-                  className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500"
-                />
-                <input
-                  type={showPassword ? "text" : "password"}
-                  required
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  placeholder="Re-enter password"
-                  className="w-full rounded-2xl border border-slate-700 bg-slate-950 py-2.5 pl-10 pr-3 text-xs text-slate-100 placeholder:text-slate-500 outline-none focus:border-cyan-500"
-                />
+              <div>
+                <label className="mb-1 block text-[11px] font-medium text-slate-300">
+                  Password <span className="text-rose-400">*</span>
+                </label>
+                <div className="relative">
+                  <Lock
+                    size={14}
+                    className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500"
+                  />
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    required
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder={tab === "signup" ? "At least 6 characters" : "••••••••"}
+                    className="w-full rounded-2xl border border-slate-700 bg-slate-950 py-2 pl-9 pr-9 text-xs text-slate-100 placeholder:text-slate-500 outline-none focus:border-cyan-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white cursor-pointer"
+                  >
+                    {showPassword ? <EyeOff size={13} /> : <Eye size={13} />}
+                  </button>
+                </div>
               </div>
+
+              {tab === "signup" && (
+                <div>
+                  <label className="mb-1 block text-[11px] font-medium text-slate-300">
+                    Confirm Password <span className="text-rose-400">*</span>
+                  </label>
+                  <div className="relative">
+                    <Lock
+                      size={14}
+                      className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500"
+                    />
+                    <input
+                      type={showPassword ? "text" : "password"}
+                      required
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      placeholder="Re-enter password"
+                      className="w-full rounded-2xl border border-slate-700 bg-slate-950 py-2 pl-9 pr-3 text-xs text-slate-100 placeholder:text-slate-500 outline-none focus:border-cyan-500"
+                    />
+                  </div>
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full mt-1.5 flex items-center justify-center gap-2 rounded-2xl bg-cyan-500 py-2.5 text-xs font-bold text-slate-950 shadow-lg shadow-cyan-500/20 transition hover:bg-cyan-400 disabled:opacity-60 cursor-pointer"
+              >
+                {loading ? (
+                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-slate-950 border-t-transparent" />
+                ) : tab === "signin" ? (
+                  <>
+                    <LogIn size={14} />
+                    <span>Sign In with Email</span>
+                  </>
+                ) : (
+                  <>
+                    <UserPlus size={14} />
+                    <span>Create Account</span>
+                  </>
+                )}
+              </button>
+            </form>
+
+            {/* Divider */}
+            <div className="my-3.5 flex items-center gap-3 shrink-0">
+              <div className="flex-1 h-px bg-slate-800" />
+              <span className="text-[10px] font-medium text-slate-500 uppercase tracking-wider">
+                Other methods
+              </span>
+              <div className="flex-1 h-px bg-slate-800" />
             </div>
-          )}
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full mt-2 flex items-center justify-center gap-2 rounded-2xl bg-cyan-500 py-3 text-xs font-bold text-slate-950 shadow-lg shadow-cyan-500/20 transition hover:bg-cyan-400 disabled:opacity-60 cursor-pointer"
-          >
-            {loading ? (
-              <div className="h-4 w-4 animate-spin rounded-full border-2 border-slate-950 border-t-transparent" />
-            ) : tab === "signin" ? (
-              <>
-                <LogIn size={15} />
-                <span>Sign In with Email</span>
-              </>
-            ) : (
-              <>
-                <UserPlus size={15} />
-                <span>Create Account</span>
-              </>
-            )}
-          </button>
-        </form>
-
-        {/* Divider */}
-        <div className="my-5 flex items-center gap-3">
-          <div className="flex-1 h-px bg-slate-800" />
-          <span className="text-[11px] font-medium text-slate-500 uppercase tracking-wider">
-            Other methods
-          </span>
-          <div className="flex-1 h-px bg-slate-800" />
-        </div>
-
-        {/* OAuth Buttons (Facebook & Google) */}
-        <div className="space-y-2">
-          {/* Facebook Sign In Button */}
-          <button
-            type="button"
-            onClick={handleFacebookSignIn}
-            disabled={loading}
-            className="w-full flex items-center justify-between rounded-2xl border border-blue-600/40 bg-blue-600/10 hover:bg-blue-600/20 px-4 py-2.5 text-xs font-semibold text-blue-200 hover:text-white transition cursor-pointer group shadow-sm active:scale-[0.985]"
-          >
-            <div className="flex items-center gap-2.5">
-              <svg className="h-4 w-4 fill-[#1877F2]" viewBox="0 0 24 24">
-                <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
-              </svg>
-              <span>Continue with Facebook</span>
-            </div>
-            <span className="text-[10px] text-blue-300 font-bold bg-blue-500/20 px-2 py-0.5 rounded-full border border-blue-500/30">
-              Instant
-            </span>
-          </button>
-
-          {/* Google Under Maintenance Button */}
-          <button
-            type="button"
-            onClick={handleGoogleUnderMaintenance}
-            className="w-full flex items-center justify-between rounded-2xl border border-slate-800 bg-slate-950/60 px-4 py-2.5 text-xs font-medium text-slate-400 hover:border-amber-500/40 hover:text-slate-300 transition cursor-pointer group"
-          >
-            <div className="flex items-center gap-2.5 opacity-60 group-hover:opacity-80">
-              <svg className="h-4 w-4 grayscale" viewBox="0 0 24 24">
-                <path
-                  fill="#4285F4"
-                  d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.66-5.17 3.66-9.17z"
-                />
-                <path
-                  fill="#34A853"
-                  d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.27 21.37 7.35 24 12 24z"
-                />
-                <path
-                  fill="#FBBC05"
-                  d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.16 0 9.97 0 12s.45 3.84 1.25 5.42l4.03-3.15z"
-                />
-                <path
-                  fill="#EA4335"
-                  d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.35 0 3.27 2.63 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z"
-                />
-              </svg>
-              <span>Continue with Google</span>
-            </div>
-            <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 text-[10px] font-semibold text-amber-300">
-              <Wrench size={10} />
-              Maintenance
-            </span>
-          </button>
-        </div>
-
-        {/* Switch tab prompt */}
-        <p className="mt-5 text-center text-xs text-slate-400">
-          {tab === "signin" ? (
-            <>
-              Don&apos;t have an account?{" "}
+            {/* OAuth Buttons (Facebook & Google) */}
+            <div className="space-y-2 shrink-0">
+              {/* Facebook Sign In Button */}
               <button
                 type="button"
-                onClick={() => handleSwitchTab("signup")}
-                className="font-bold text-cyan-400 hover:underline cursor-pointer"
+                onClick={handleFacebookSignIn}
+                disabled={loading}
+                className="w-full flex items-center justify-between rounded-2xl border border-blue-600/40 bg-blue-600/10 hover:bg-blue-600/20 px-3.5 py-2 text-xs font-semibold text-blue-200 hover:text-white transition cursor-pointer group shadow-sm active:scale-[0.985]"
               >
-                Sign up
+                <div className="flex items-center gap-2">
+                  <svg className="h-4 w-4 fill-[#1877F2]" viewBox="0 0 24 24">
+                    <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
+                  </svg>
+                  <span>Continue with Facebook</span>
+                </div>
+                <span className="text-[10px] text-blue-300 font-bold bg-blue-500/20 px-2 py-0.5 rounded-full border border-blue-500/30">
+                  Instant
+                </span>
               </button>
-            </>
-          ) : (
-            <>
-              Already have an account?{" "}
+
+              {/* Google Under Maintenance Button */}
               <button
                 type="button"
-                onClick={() => handleSwitchTab("signin")}
-                className="font-bold text-cyan-400 hover:underline cursor-pointer"
+                onClick={handleGoogleUnderMaintenance}
+                className="w-full flex items-center justify-between rounded-2xl border border-slate-800 bg-slate-950/60 px-3.5 py-2 text-xs font-medium text-slate-400 hover:border-amber-500/40 hover:text-slate-300 transition cursor-pointer group"
               >
-                Sign in
+                <div className="flex items-center gap-2 opacity-60 group-hover:opacity-80">
+                  <svg className="h-4 w-4 grayscale" viewBox="0 0 24 24">
+                    <path
+                      fill="#4285F4"
+                      d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.66-5.17 3.66-9.17z"
+                    />
+                    <path
+                      fill="#34A853"
+                      d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.27 21.37 7.35 24 12 24z"
+                    />
+                    <path
+                      fill="#FBBC05"
+                      d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.16 0 9.97 0 12s.45 3.84 1.25 5.42l4.03-3.15z"
+                    />
+                    <path
+                      fill="#EA4335"
+                      d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.35 0 3.27 2.63 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z"
+                    />
+                  </svg>
+                  <span>Continue with Google</span>
+                </div>
+                <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 text-[10px] font-semibold text-amber-300">
+                  <Wrench size={10} />
+                  Maintenance
+                </span>
               </button>
-            </>
-          )}
-        </p>
+            </div>
+
+            {/* Switch tab prompt */}
+            <p className="mt-3.5 text-center text-xs text-slate-400 shrink-0">
+              {tab === "signin" ? (
+                <>
+                  Don&apos;t have an account?{" "}
+                  <button
+                    type="button"
+                    onClick={() => handleSwitchTab("signup")}
+                    className="font-bold text-cyan-400 hover:underline cursor-pointer"
+                  >
+                    Sign up
+                  </button>
+                </>
+              ) : (
+                <>
+                  Already have an account?{" "}
+                  <button
+                    type="button"
+                    onClick={() => handleSwitchTab("signin")}
+                    className="font-bold text-cyan-400 hover:underline cursor-pointer"
+                  >
+                    Sign in
+                  </button>
+                </>
+              )}
+            </p>
           </>
         )}
       </div>
