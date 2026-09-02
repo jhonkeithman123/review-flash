@@ -117,8 +117,16 @@ export function Navbar() {
           if (result.user.displayName) setCurrentUserName(result.user.displayName);
         }
       })
-      .catch((err) => {
-        console.warn("Firebase redirect auth check:", err);
+      .catch((err: unknown) => {
+        const error = err as { code?: string; message?: string };
+        if (error?.code === "auth/missing-initial-state") {
+          console.warn(
+            "Session was lost during redirect (auth/missing-initial-state). Check that your custom authDomain and proxy rewrites are configured correctly.",
+            error
+          );
+        } else {
+          console.warn("Firebase redirect auth check:", error?.code || error);
+        }
       });
 
     const unsubscribe = onAuthStateChanged(auth, (nextUser) => {

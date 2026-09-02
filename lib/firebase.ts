@@ -11,7 +11,7 @@ import { getFirestore, Firestore } from "firebase/firestore";
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || "AIzaSyD5BOnegAqwK-BuSunAOyqeaybJFjKw-wk",
-  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN || "review-flash.firebaseapp.com",
+  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN || "review-flash.vercel.app",
   projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || "review-flash",
   storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET || "review-flash.firebasestorage.app",
   messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || "343016178947",
