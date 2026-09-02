@@ -319,66 +319,67 @@ export function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
   // FACEBOOK AUTHENTICATION (ACTIVE)
   // ========================================================
   const handleFacebookSignIn = async () => {
-    if (!isFirebaseConfigured || !auth) {
-      setErrorMsg("Firebase is not configured. Running in local storage mode.");
-      return;
-    }
+    setErrorMsg("This is disabled for now");
+    // if (!isFirebaseConfigured || !auth) {
+    //   setErrorMsg("Firebase is not configured. Running in local storage mode.");
+    //   return;
+    // }
 
-    setLoading(true);
-    setErrorMsg(null);
-    setSuccessMsg(null);
+    // setLoading(true);
+    // setErrorMsg(null);
+    // setSuccessMsg(null);
 
-    try {
-      const res = await signInWithPopup(auth, facebookProvider);
-      if (res.user) {
-        setCurrentUserId(res.user.uid);
-        if (res.user.email) setCurrentUserEmail(res.user.email);
-        if (res.user.displayName) setCurrentUserName(res.user.displayName);
-        setSuccessMsg("🎉 Signed in with Facebook!");
-        setTimeout(() => {
-          onSuccess?.(res.user);
-          onClose();
-          resetForm();
-        }, 500);
-      }
-    } catch (err: unknown) {
-      const authErr = err as { code?: string; message?: string; customData?: { email?: string } };
-      console.warn("Facebook Auth Note:", authErr?.code || authErr);
+    // try {
+    //   const res = await signInWithPopup(auth, facebookProvider);
+    //   if (res.user) {
+    //     setCurrentUserId(res.user.uid);
+    //     if (res.user.email) setCurrentUserEmail(res.user.email);
+    //     if (res.user.displayName) setCurrentUserName(res.user.displayName);
+    //     setSuccessMsg("🎉 Signed in with Facebook!");
+    //     setTimeout(() => {
+    //       onSuccess?.(res.user);
+    //       onClose();
+    //       resetForm();
+    //     }, 500);
+    //   }
+    // } catch (err: unknown) {
+    //   const authErr = err as { code?: string; message?: string; customData?: { email?: string } };
+    //   console.warn("Facebook Auth Note:", authErr?.code || authErr);
 
-      if (authErr?.code === "auth/popup-blocked") {
-        setIsPopupBlocked(true);
-        setBlockedProvider("facebook");
-        setErrorMsg("Your browser or ad-blocker blocked the popup. Click below to continue using full-page login:");
-      } else if (authErr?.code === "auth/popup-closed-by-user") {
-        setErrorMsg("Facebook sign-in was cancelled before completion. Please try again.");
-      } else if (authErr?.code === "auth/account-exists-with-different-credential") {
-        const pendingCred =
-          FacebookAuthProvider.credentialFromError(err as any) || (authErr as any)?.credential;
-        const targetEmail = authErr?.customData?.email || (err as any)?.email;
+    //   if (authErr?.code === "auth/popup-blocked") {
+    //     setIsPopupBlocked(true);
+    //     setBlockedProvider("facebook");
+    //     setErrorMsg("Your browser or ad-blocker blocked the popup. Click below to continue using full-page login:");
+    //   } else if (authErr?.code === "auth/popup-closed-by-user") {
+    //     setErrorMsg("Facebook sign-in was cancelled before completion. Please try again.");
+    //   } else if (authErr?.code === "auth/account-exists-with-different-credential") {
+    //     const pendingCred =
+    //       FacebookAuthProvider.credentialFromError(err as any) || (authErr as any)?.credential;
+    //     const targetEmail = authErr?.customData?.email || (err as any)?.email;
 
-        if (pendingCred && targetEmail) {
-          setPendingCredential(pendingCred);
-          setPendingEmail(targetEmail);
-          setIsLinkingMode(true);
-          setErrorMsg(null);
-          setSuccessMsg("Account exists! Enter your password below to link Facebook permanently.");
-        } else {
-          setErrorMsg("An account already exists with this email. Please sign in with Email/Password to link Facebook.");
-        }
-      } else if (authErr?.code === "auth/operation-not-allowed") {
-        setErrorMsg("Facebook login is not enabled in Firebase Console ➔ Authentication ➔ Sign-in method.");
-      } else if (authErr?.code === "auth/unauthorized-domain") {
-        setErrorMsg("Domain not authorized. Please add review-flash.vercel.app in Firebase Console ➔ Authentication ➔ Settings ➔ Authorized Domains.");
-      } else {
-        setErrorMsg(
-          authErr?.message
-            ? `${authErr.message} (${authErr.code || "auth-error"})`
-            : "Failed to sign in with Facebook."
-        );
-      }
-    } finally {
-      setLoading(false);
-    }
+    //     if (pendingCred && targetEmail) {
+    //       setPendingCredential(pendingCred);
+    //       setPendingEmail(targetEmail);
+    //       setIsLinkingMode(true);
+    //       setErrorMsg(null);
+    //       setSuccessMsg("Account exists! Enter your password below to link Facebook permanently.");
+    //     } else {
+    //       setErrorMsg("An account already exists with this email. Please sign in with Email/Password to link Facebook.");
+    //     }
+    //   } else if (authErr?.code === "auth/operation-not-allowed") {
+    //     setErrorMsg("Facebook login is not enabled in Firebase Console ➔ Authentication ➔ Sign-in method.");
+    //   } else if (authErr?.code === "auth/unauthorized-domain") {
+    //     setErrorMsg("Domain not authorized. Please add review-flash.vercel.app in Firebase Console ➔ Authentication ➔ Settings ➔ Authorized Domains.");
+    //   } else {
+    //     setErrorMsg(
+    //       authErr?.message
+    //         ? `${authErr.message} (${authErr.code || "auth-error"})`
+    //         : "Failed to sign in with Facebook."
+    //     );
+    //   }
+    // } finally {
+    //   setLoading(false);
+    // }
   };
 
   const handleFacebookRedirectSignIn = async () => {
@@ -389,6 +390,7 @@ export function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
     setLoading(true);
     setErrorMsg(null);
     try {
+      
       await signInWithRedirect(auth, facebookProvider);
     } catch (err: unknown) {
       const authErr = err as { code?: string; message?: string };
@@ -784,8 +786,8 @@ export function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
                   </svg>
                   <span>Continue with Facebook</span>
                 </div>
-                <span className="text-[10px] text-blue-300 font-bold bg-blue-500/20 px-2 py-0.5 rounded-full border border-blue-500/30">
-                  Instant
+                <span className="text-[10px] text-orange-300 font-bold bg-yellow-500/20 px-2 py-0.5 rounded-full border border-blue-500/30">
+                  Under Maintenance
                 </span>
               </button>
             </div>
