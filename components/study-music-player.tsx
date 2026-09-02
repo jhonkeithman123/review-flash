@@ -3,6 +3,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import {
   CURATED_PLAYLISTS,
+  fetchCloudUserCustomPlaylists,
   loadStoredMusicSettings,
   loadUserCustomPlaylists,
   MusicPlayerSettings,
@@ -13,15 +14,19 @@ import {
   StudyPlaylist,
   TrackItem,
 } from "@/lib/musicPlaylists";
+import { auth } from "@/lib/firebase";
+import { onAuthStateChanged, User } from "firebase/auth";
 import {
   AlertCircle,
   CheckCircle2,
   ChevronDown,
   ChevronUp,
+  Cloud,
   Disc,
   ExternalLink,
   Flame,
   Gamepad2,
+  HardDrive,
   Headphones,
   Heart,
   ListMusic,
@@ -86,6 +91,7 @@ export function StudyMusicPlayer() {
   const [customTitle, setCustomTitle] = useState("");
   const [customArtist, setCustomArtist] = useState("");
   const [statusNotice, setStatusNotice] = useState<{ text: string; type: "info" | "success" | "warn" } | null>(null);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
 
   const playerRef = useRef<any>(null);
   const pendingTrackRef = useRef<TrackItem | null>(null);
@@ -133,6 +139,25 @@ export function StudyMusicPlayer() {
     const foundPlaylist = merged.find((p) => p.id === saved.activePlaylistId) || CURATED_PLAYLISTS[0];
     setActivePlaylist(foundPlaylist);
     setQueue(foundPlaylist.tracks);
+  }, []);
+
+  // Listen for user auth state and sync cloud playlists from Firestore
+  useEffect(() => {
+    if (!auth) return;
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      setCurrentUser(user);
+      if (user) {
+        try {
+          const cloudCustom = await fetchCloudUserCustomPlaylists(user.uid);
+          if (cloudCustom && cloudCustom.length > 0) {
+            setUserCustomPlaylists(cloudCustom);
+          }
+        } catch (e) {
+          console.warn("Cloud music playlists sync note:", e);
+        }
+      }
+    });
+    return () => unsubscribe();
   }, []);
 
   // Show auto-dismiss status notice
@@ -519,7 +544,7 @@ export function StudyMusicPlayer() {
             p.id === playlist.id ? updatedPlaylist : p
           );
           setUserCustomPlaylists(updatedPlaylists);
-          saveUserCustomPlaylists(updatedPlaylists);
+          saveUserCustomPlaylists(updatedPlaylists, currentUser?.uid);
           notify(`Separated ${data.tracks.length} songs into your queue! 🎵`, "info", 3000);
         }
       } catch (e) {
@@ -642,7 +667,7 @@ export function StudyMusicPlayer() {
 
         const updatedPlaylists = [newPlaylist, ...userCustomPlaylists];
         setUserCustomPlaylists(updatedPlaylists);
-        saveUserCustomPlaylists(updatedPlaylists);
+        saveUserCustomPlaylists(updatedPlaylists, currentUser?.uid);
 
         setActivePlaylist(newPlaylist);
         setQueue(extractedTracks);
@@ -652,7 +677,13 @@ export function StudyMusicPlayer() {
           loadAndPlayTrack(extractedTracks[0], true);
         }
 
-        notify(`Separated & queued ${extractedTracks.length} song(s) from playlist! 🎧`, "success", 4500);
+        notify(
+          currentUser
+            ? `Saved & queued ${extractedTracks.length} song(s) to your cloud account! ☁️`
+            : `Separated & queued ${extractedTracks.length} song(s) to study queue! 🎧`,
+          "success",
+          4500
+        );
         setCustomInput("");
         setCustomTitle("");
         setCustomArtist("");
@@ -725,11 +756,14 @@ export function StudyMusicPlayer() {
     e.stopPropagation();
     const updated = userCustomPlaylists.filter((p) => p.id !== playlistId);
     setUserCustomPlaylists(updated);
-    saveUserCustomPlaylists(updated);
+    saveUserCustomPlaylists(updated, currentUser?.uid);
     if (activePlaylist.id === playlistId) {
       handleSelectPlaylist(CURATED_PLAYLISTS[0]);
     }
-    notify("Custom playlist removed.", "info");
+    notify(
+      currentUser ? "Custom playlist removed from your cloud account." : "Custom playlist removed from local storage.",
+      "info"
+    );
   };
 
   return (
@@ -1287,12 +1321,25 @@ export function StudyMusicPlayer() {
             {activeTab === "custom" && (
               <div className="flex-1 overflow-y-auto p-5 space-y-4">
                 <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4 space-y-2 text-xs text-slate-300">
-                  <div className="flex items-center gap-2 font-bold text-white">
-                    <Sparkles size={15} className="text-cyan-400" />
-                    <span>Paste YouTube &amp; YouTube Music Playlists or Link Lists</span>
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 font-bold text-white">
+                      <Sparkles size={15} className="text-cyan-400" />
+                      <span>Paste YouTube &amp; YouTube Music Playlists or Link Lists</span>
+                    </div>
+                    {currentUser ? (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 border border-emerald-500/30 px-2 py-0.5 text-[10px] font-semibold text-emerald-300 shrink-0">
+                        <Cloud size={10} /> Cloud Sync Active
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-slate-800 border border-slate-700 px-2 py-0.5 text-[10px] font-medium text-slate-400 shrink-0">
+                        <HardDrive size={10} /> Local Storage Only
+                      </span>
+                    )}
                   </div>
                   <p className="text-slate-400 leading-relaxed">
-                    You can paste a <strong>Full YouTube Playlist link</strong> (e.g. <code className="text-cyan-300">https://youtube.com/playlist?list=PL...</code>), a single song link, or a <strong>list of multiple links</strong> on separate lines to add them to your study queue instantly.
+                    {currentUser
+                      ? "Custom playlists are automatically saved to your cloud account so they follow you on any device."
+                      : "Custom playlists are saved locally in your browser. Sign in anytime to sync them across your devices."}
                   </p>
                 </div>
 

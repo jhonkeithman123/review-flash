@@ -30,6 +30,7 @@ import {
   Lock,
   LogIn,
   Mail,
+  ShieldAlert,
   ShieldCheck,
   User as UserIcon,
   UserPlus,
@@ -54,6 +55,7 @@ export function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [isPopupBlocked, setIsPopupBlocked] = useState(false);
+  const [blockedProvider, setBlockedProvider] = useState<"google" | "facebook">("google");
 
   // Account Linking State
   const [isLinkingMode, setIsLinkingMode] = useState(false);
@@ -72,6 +74,7 @@ export function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
     setLinkPassword("");
     setIsLinkingMode(false);
     setIsPopupBlocked(false);
+    setBlockedProvider("google");
     setPendingCredential(null);
     setPendingEmail("");
     setErrorMsg(null);
@@ -82,6 +85,7 @@ export function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
     setTab(nextTab);
     setIsLinkingMode(false);
     setIsPopupBlocked(false);
+    setBlockedProvider("google");
     setErrorMsg(null);
     setSuccessMsg(null);
   };
@@ -260,7 +264,8 @@ export function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
 
       if (authErr?.code === "auth/popup-blocked") {
         setIsPopupBlocked(true);
-        setErrorMsg("Your browser blocked the popup. Click below to continue using full-page login:");
+        setBlockedProvider("google");
+        setErrorMsg("Your browser or ad-blocker blocked the popup. Click below to continue using full-page login:");
       } else if (authErr?.code === "auth/popup-closed-by-user") {
         setErrorMsg("Google sign-in was cancelled before completion. Please try again.");
       } else if (authErr?.code === "auth/account-exists-with-different-credential") {
@@ -311,14 +316,8 @@ export function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
   };
 
   // ========================================================
-  // FACEBOOK AUTHENTICATION (UNDER MAINTENANCE)
+  // FACEBOOK AUTHENTICATION (ACTIVE)
   // ========================================================
-  const handleFacebookUnderMaintenance = () => {
-    setErrorMsg("⚠️ Facebook Sign-In is temporarily under maintenance while Meta finishes app review. Please use Google or Email & Password to sign in.");
-  };
-
-  /*
-  // Facebook Login code (Commented out during Meta Maintenance):
   const handleFacebookSignIn = async () => {
     if (!isFirebaseConfigured || !auth) {
       setErrorMsg("Firebase is not configured. Running in local storage mode.");
@@ -348,7 +347,8 @@ export function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
 
       if (authErr?.code === "auth/popup-blocked") {
         setIsPopupBlocked(true);
-        setErrorMsg("Your browser blocked the popup. Click below to continue using full-page login:");
+        setBlockedProvider("facebook");
+        setErrorMsg("Your browser or ad-blocker blocked the popup. Click below to continue using full-page login:");
       } else if (authErr?.code === "auth/popup-closed-by-user") {
         setErrorMsg("Facebook sign-in was cancelled before completion. Please try again.");
       } else if (authErr?.code === "auth/account-exists-with-different-credential") {
@@ -397,7 +397,6 @@ export function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
       setLoading(false);
     }
   };
-  */
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-md overflow-y-auto animate-in fade-in duration-150">
@@ -554,21 +553,56 @@ export function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
 
             {/* Error / Success Feedback */}
             {errorMsg && (
-              <div className="mb-3 flex flex-col gap-2 rounded-2xl border border-rose-500/40 bg-rose-500/10 p-3 text-xs text-rose-200 animate-in fade-in">
-                <div className="flex items-start gap-2">
-                  <AlertCircle size={14} className="shrink-0 mt-0.5 text-rose-400" />
-                  <span className="leading-snug">{errorMsg}</span>
+              <div
+                className={`mb-3 flex flex-col gap-2.5 rounded-2xl border p-3 text-xs animate-in fade-in ${
+                  isPopupBlocked
+                    ? "border-amber-500/40 bg-amber-500/10 text-amber-200"
+                    : "border-rose-500/40 bg-rose-500/10 text-rose-200"
+                }`}
+              >
+                <div className="flex items-start gap-2.5">
+                  {isPopupBlocked ? (
+                    <ShieldAlert size={16} className="shrink-0 mt-0.5 text-amber-400" />
+                  ) : (
+                    <AlertCircle size={15} className="shrink-0 mt-0.5 text-rose-400" />
+                  )}
+                  <div className="space-y-1">
+                    <p className="font-bold text-slate-100">
+                      {isPopupBlocked ? "Popup Blocked by Ad Blocker or Browser" : "Sign-In Notice"}
+                    </p>
+                    <p className="leading-relaxed text-[11px] text-slate-300">
+                      {isPopupBlocked
+                        ? "Ad blockers (uBlock, AdBlock, Brave Shields) or strict browser settings frequently block login windows. You can pause your ad blocker for ReviewFlash, or continue with full-page login:"
+                        : errorMsg}
+                    </p>
+                  </div>
                 </div>
+
                 {isPopupBlocked && (
-                  <button
-                    type="button"
-                    onClick={handleGoogleRedirectSignIn}
-                    disabled={loading}
-                    className="mt-1 w-full flex items-center justify-center gap-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 py-2 px-3 text-xs font-bold text-white transition shadow-md cursor-pointer"
-                  >
-                    <Globe size={13} />
-                    <span>Continue with Full-Page Google Login ➔</span>
-                  </button>
+                  <div className="pt-1 space-y-2">
+                    <button
+                      type="button"
+                      onClick={
+                        blockedProvider === "facebook"
+                          ? handleFacebookRedirectSignIn
+                          : handleGoogleRedirectSignIn
+                      }
+                      disabled={loading}
+                      className={`w-full flex items-center justify-center gap-2 rounded-xl py-2 px-3 text-xs font-bold text-white transition shadow-md cursor-pointer ${
+                        blockedProvider === "facebook"
+                          ? "bg-blue-600 hover:bg-blue-500 shadow-blue-500/20"
+                          : "bg-cyan-600 hover:bg-cyan-500 shadow-cyan-500/20"
+                      }`}
+                    >
+                      <Globe size={13} />
+                      <span>
+                        Continue with Full-Page {blockedProvider === "facebook" ? "Facebook" : "Google"} Login ➔
+                      </span>
+                    </button>
+                    <p className="text-[10px] text-slate-400 text-center">
+                      💡 Tip: Click the lock or red &apos;X&apos; in your address bar to always allow popups for ReviewFlash.
+                    </p>
+                  </div>
                 )}
               </div>
             )}
@@ -737,24 +771,21 @@ export function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
                 </span>
               </button>
 
-              {/* Facebook Under Maintenance Button */}
+              {/* Facebook Sign In Button (Active) */}
               <button
                 type="button"
-                onClick={handleFacebookUnderMaintenance}
-                className="w-full flex items-center justify-between rounded-2xl border border-slate-800 bg-slate-950/60 px-3.5 py-2 text-xs font-medium text-slate-400 hover:border-amber-500/40 hover:text-slate-300 transition cursor-pointer group"
+                onClick={handleFacebookSignIn}
+                disabled={loading}
+                className="w-full flex items-center justify-between rounded-2xl border border-blue-600/40 bg-blue-600/10 hover:bg-blue-600/20 px-3.5 py-2.5 text-xs font-semibold text-blue-200 hover:text-white transition cursor-pointer group shadow-sm active:scale-[0.985]"
               >
-                <div className="flex items-center gap-2 opacity-60 group-hover:opacity-80">
-                  <svg className="h-4 w-4 grayscale" viewBox="0 0 24 24">
-                    <path
-                      fill="#1877F2"
-                      d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"
-                    />
+                <div className="flex items-center gap-2.5">
+                  <svg className="h-4 w-4 fill-[#1877F2]" viewBox="0 0 24 24">
+                    <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
                   </svg>
                   <span>Continue with Facebook</span>
                 </div>
-                <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 text-[10px] font-semibold text-amber-300">
-                  <Wrench size={10} />
-                  Maintenance
+                <span className="text-[10px] text-blue-300 font-bold bg-blue-500/20 px-2 py-0.5 rounded-full border border-blue-500/30">
+                  Instant
                 </span>
               </button>
             </div>

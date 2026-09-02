@@ -5,6 +5,7 @@ import { InteractiveTour } from "@/components/interactive-tour";
 import { AiChatDrawer } from "@/components/ai-chat-drawer";
 import { WhatsNewModal } from "@/components/whats-new-modal";
 import { StudyMusicPlayer } from "@/components/study-music-player";
+import { AdblockDetector } from "@/components/adblock-detector";
 import type { Metadata, Viewport } from "next";
 
 export const viewport: Viewport = {
@@ -50,6 +51,7 @@ export default function RootLayout({
         <WhatsNewModal />
         <AiChatDrawer />
         <StudyMusicPlayer />
+        <AdblockDetector />
       </body>
     </html>
   );

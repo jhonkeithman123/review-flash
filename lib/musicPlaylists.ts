@@ -1,3 +1,6 @@
+import { auth, db, isFirebaseConfigured } from "./firebase";
+import { doc, getDoc, setDoc } from "firebase/firestore";
+
 export interface TrackItem {
   id: string; // YouTube Video ID or custom ID
   title: string;
@@ -343,24 +346,109 @@ export function saveStoredMusicSettings(settings: MusicPlayerSettings) {
   }
 }
 
-export function loadUserCustomPlaylists(): StudyPlaylist[] {
+function sanitizePlaylistsForFirestore(playlists: StudyPlaylist[]): any[] {
+  return playlists.map((p) => {
+    const clean: Record<string, any> = {
+      id: p.id,
+      title: p.title || "Custom Playlist",
+      tagline: p.tagline || "",
+      genre: p.genre || "Custom",
+      emoji: p.emoji || "🎵",
+      badgeColor: p.badgeColor || "",
+      artworkUrl: p.artworkUrl || "",
+      isUserCustom: true,
+      tracks: (p.tracks || []).map((t) => ({
+        id: t.id,
+        title: t.title || "Custom Track",
+        artist: t.artist || "Unknown Artist",
+        genre: t.genre || "Custom",
+        artworkUrl: t.artworkUrl || "",
+        duration: t.duration || "",
+        isCustom: true,
+      })),
+    };
+    if (p.playlistId) clean.playlistId = p.playlistId;
+    return clean;
+  });
+}
+
+export function loadUserCustomPlaylists(userId?: string): StudyPlaylist[] {
   if (typeof window === "undefined") return [];
   try {
-    const raw = localStorage.getItem(STORAGE_CUSTOM_PLAYLISTS);
+    const targetUid = userId || auth?.currentUser?.uid;
+    const userKey = targetUid ? `${STORAGE_CUSTOM_PLAYLISTS}_${targetUid}` : null;
+    const raw = (userKey && localStorage.getItem(userKey)) || localStorage.getItem(STORAGE_CUSTOM_PLAYLISTS);
     if (raw) {
       return JSON.parse(raw);
     }
   } catch (e) {
-    console.warn("Failed to load custom playlists", e);
+    console.warn("Failed to load custom playlists from localStorage", e);
   }
   return [];
 }
 
-export function saveUserCustomPlaylists(playlists: StudyPlaylist[]) {
-  if (typeof window === "undefined") return;
+export async function fetchCloudUserCustomPlaylists(userId?: string): Promise<StudyPlaylist[]> {
+  const localList = loadUserCustomPlaylists(userId);
+  const targetUid = userId || auth?.currentUser?.uid;
+
+  if (!targetUid || !isFirebaseConfigured || !db) {
+    return localList;
+  }
+
   try {
-    localStorage.setItem(STORAGE_CUSTOM_PLAYLISTS, JSON.stringify(playlists));
+    const musicDocRef = doc(db, "users", targetUid, "music", "settings");
+    const snap = await getDoc(musicDocRef);
+    if (snap.exists()) {
+      const data = snap.data();
+      if (Array.isArray(data?.customPlaylists)) {
+        const cloudPlaylists = data.customPlaylists as StudyPlaylist[];
+        if (typeof window !== "undefined") {
+          localStorage.setItem(`${STORAGE_CUSTOM_PLAYLISTS}_${targetUid}`, JSON.stringify(cloudPlaylists));
+          localStorage.setItem(STORAGE_CUSTOM_PLAYLISTS, JSON.stringify(cloudPlaylists));
+        }
+        return cloudPlaylists;
+      }
+    }
+  } catch (err) {
+    console.warn("Could not fetch cloud playlists from Firestore, using local fallback:", err);
+  }
+
+  return localList;
+}
+
+export function saveUserCustomPlaylists(playlists: StudyPlaylist[], userId?: string) {
+  if (typeof window === "undefined") return;
+
+  const targetUid = userId || auth?.currentUser?.uid;
+
+  // 1. Always save to localStorage immediately for zero latency & offline access
+  try {
+    const serialized = JSON.stringify(playlists);
+    localStorage.setItem(STORAGE_CUSTOM_PLAYLISTS, serialized);
+    if (targetUid) {
+      localStorage.setItem(`${STORAGE_CUSTOM_PLAYLISTS}_${targetUid}`, serialized);
+    }
   } catch (e) {
-    console.warn("Failed to save custom playlists", e);
+    console.warn("Failed to save custom playlists to localStorage", e);
+  }
+
+  // 2. If user is authenticated and Firestore is configured, sync to their cloud document
+  if (targetUid && isFirebaseConfigured && db) {
+    try {
+      const musicDocRef = doc(db, "users", targetUid, "music", "settings");
+      const cleanData = sanitizePlaylistsForFirestore(playlists);
+      setDoc(
+        musicDocRef,
+        {
+          customPlaylists: cleanData,
+          updatedAt: Date.now(),
+        },
+        { merge: true }
+      ).catch((err) => {
+        console.warn("Failed to sync custom playlists to Firestore:", err);
+      });
+    } catch (e) {
+      console.warn("Failed to initiate Firestore playlist sync:", e);
+    }
   }
 }
