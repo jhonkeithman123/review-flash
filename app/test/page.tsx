@@ -244,6 +244,25 @@ function TestContent() {
 
   const currentQuestion = questions[questionIndex];
 
+  // Broadcast live test/quiz context for AI Study Assistant (@mentions & deep website awareness)
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const scorePct = results.total > 0 ? Math.round((results.correct / results.total) * 100) : 0;
+      window.dispatchEvent(
+        new CustomEvent("update-ai-context", {
+          detail: {
+            currentCard: currentQuestion?.card,
+            deckTitle: activeDeck?.title,
+            mode: "test",
+            quizSummary: results.submitted
+              ? `Completed Quiz on "${activeDeck?.title || "All Decks"}" with ${results.correct}/${results.total} correct (${scorePct}%), adaptive difficulty peak +${results.adaptivePeak}%`
+              : `Active Quiz on "${activeDeck?.title || "All Decks"}", Question ${questionIndex + 1} of ${questions.length}`,
+          },
+        })
+      );
+    }
+  }, [currentQuestion, activeDeck, results, questionIndex, questions.length]);
+
   // Set time limit dynamically when questions or time mode change
   useEffect(() => {
     if (questions.length > 0) {

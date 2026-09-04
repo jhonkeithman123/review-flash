@@ -33,6 +33,7 @@ import {
   Wand2,
   Zap,
 } from "lucide-react";
+import { APP_VERSION, APP_CODENAME, APP_RELEASE_DATE, VERSIONS_BY_TAG } from "@/lib/version";
 
 interface ChangeItem {
   type: "feat" | "ai" | "improve" | "fix" | "sec";
@@ -59,10 +60,53 @@ interface VersionLog {
 
 const UPDATE_LOGS: VersionLog[] = [
   {
-    version: "v2.0.0",
-    codename: "The Music & Social Horizon",
-    releaseDate: "September 1, 2026",
+    ...VERSIONS_BY_TAG["v2.1.0"],
     isLatest: true,
+    category: "major",
+    badgeColor: "from-cyan-400 via-teal-400 to-indigo-500",
+    highlightSummary:
+      "A delightful minor update bringing origin-anchored spring growth animations, real-time adaptive height growth for floating menus, directional swiping for music lounge tabs, and a sliding pill segmented navbar.",
+    stats: {
+      componentsAdded: 4,
+      testsPassed: "100%",
+      perfIncrease: "60fps GPU-accelerated spring animations",
+    },
+    changes: [
+      {
+        type: "feat",
+        title: "Origin-Anchored Spring Growth & Blossoming Modals",
+        desc: "Interactive Tour and What's New modals now dynamically capture trigger button click coordinates and spring-grow outward to the center of the viewport, reverse-shrinking back into the button when dismissed.",
+        tags: ["Spring Animation", "Physics Motion", "Modal Growth"],
+      },
+      {
+        type: "feat",
+        title: "Real-Time Adaptive Height Growth & No Snapping",
+        desc: "Study Music Lounge and Interactive Tour now monitor content height in real-time with ResizeObserver, smoothly animating card dimensions (cubic-bezier) when advancing steps, toggling tabs, or queuing songs.",
+        tags: ["Smooth Height", "ResizeObserver", "No Snapping"],
+      },
+      {
+        type: "feat",
+        title: "Intelligent Directional Tab Swiping",
+        desc: "Switching between Playlists, Queue, and Custom Paste Links in the Study Music Lounge dynamically slides tab content left or right depending on whether you navigate forward or backward.",
+        tags: ["Directional Swipe", "Tab Navigation", "Study Music"],
+      },
+      {
+        type: "feat",
+        title: "Gliding Segmented Navbar Indicator Pill",
+        desc: "Desktop navigation links (Decks, Review, Test, Create) now feature a cyan pill that physically glides across the navigation track with directional entering transitions.",
+        tags: ["Gliding Pill", "Navbar", "Segmented Control"],
+      },
+      {
+        type: "improve",
+        title: "Interactive Micro-Animations Across Menus",
+        desc: "Added 90° morphing rotation to the mobile 3-line hamburger menu, 180° chevron flipping on the Help button, and spring hover badges on all menu items.",
+        tags: ["Micro-Animations", "Hamburger Morph", "Help Menu"],
+      },
+    ],
+  },
+  {
+    ...VERSIONS_BY_TAG["v2.0.0"],
+    isLatest: false,
     category: "major",
     badgeColor: "from-emerald-400 via-teal-400 to-cyan-500",
     highlightSummary:
@@ -118,9 +162,7 @@ const UPDATE_LOGS: VersionLog[] = [
     ],
   },
   {
-    version: "v1.4.0",
-    codename: "Cognitive Dual-Engine & Knowledge Hub",
-    releaseDate: "August 31, 2026",
+    ...VERSIONS_BY_TAG["v1.4.0"],
     isLatest: false,
     category: "ai",
     badgeColor: "from-cyan-500 to-indigo-500",
@@ -171,9 +213,7 @@ const UPDATE_LOGS: VersionLog[] = [
     ],
   },
   {
-    version: "v1.3.0",
-    codename: "DITroy AI Tutor & Spaced Retrieval",
-    releaseDate: "August 30, 2026",
+    ...VERSIONS_BY_TAG["v1.3.0"],
     category: "major",
     badgeColor: "from-indigo-500 to-purple-500",
     highlightSummary:
@@ -211,9 +251,7 @@ const UPDATE_LOGS: VersionLog[] = [
     ],
   },
   {
-    version: "v1.2.0",
-    codename: "Collaborative Study & Permission Mesh",
-    releaseDate: "August 28, 2026",
+    ...VERSIONS_BY_TAG["v1.2.0"],
     category: "collab",
     badgeColor: "from-emerald-500 to-cyan-500",
     highlightSummary:
@@ -251,9 +289,7 @@ const UPDATE_LOGS: VersionLog[] = [
     ],
   },
   {
-    version: "v1.1.0",
-    codename: "Deck Studio & Rich Text Engine",
-    releaseDate: "August 25, 2026",
+    ...VERSIONS_BY_TAG["v1.1.0"],
     category: "studio",
     badgeColor: "from-amber-500 to-rose-500",
     highlightSummary:
@@ -291,9 +327,7 @@ const UPDATE_LOGS: VersionLog[] = [
     ],
   },
   {
-    version: "v1.0.0",
-    codename: "Genesis: Modern Active Recall Flashcards",
-    releaseDate: "August 20, 2026",
+    ...VERSIONS_BY_TAG["v1.0.0"],
     category: "major",
     badgeColor: "from-blue-500 to-cyan-500",
     highlightSummary:

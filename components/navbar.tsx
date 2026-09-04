@@ -48,6 +48,7 @@ import {
 } from "firebase/auth";
 import { useEffect, useRef, useState } from "react";
 import { AuthModal } from "./auth-modal";
+import { APP_VERSION } from "@/lib/version";
 
 // Core Primary Nav Links
 const primaryNavItems = [
@@ -71,6 +72,54 @@ export function Navbar() {
 
   const userDropdownRef = useRef<HTMLDivElement>(null);
   const moreDropdownRef = useRef<HTMLDivElement>(null);
+
+  // Large-screen Navbar Tabs Sliding Indicator & Direction Tracking
+  const navContainerRef = useRef<HTMLDivElement>(null);
+  const navTabRefs = useRef<(HTMLAnchorElement | null)[]>([]);
+  const prevNavPathRef = useRef(pathname);
+  const [navDirection, setNavDirection] = useState<"left" | "right">("right");
+  const [pillStyle, setPillStyle] = useState<{ left: number; width: number; opacity: number }>({
+    left: 0,
+    width: 0,
+    opacity: 0,
+  });
+
+  const navOrder = ["/decks", "/review", "/test", "/create"];
+
+  useEffect(() => {
+    if (prevNavPathRef.current !== pathname) {
+      const oldIdx = navOrder.indexOf(prevNavPathRef.current);
+      const newIdx = navOrder.indexOf(pathname);
+      if (oldIdx !== -1 && newIdx !== -1) {
+        setNavDirection(newIdx > oldIdx ? "left" : "right");
+      }
+      prevNavPathRef.current = pathname;
+    }
+  }, [pathname]);
+
+  useEffect(() => {
+    const updatePill = () => {
+      const activeIdx = primaryNavItems.findIndex((item) => item.href === pathname);
+      if (activeIdx !== -1 && navTabRefs.current[activeIdx] && navContainerRef.current) {
+        const el = navTabRefs.current[activeIdx]!;
+        setPillStyle({
+          left: el.offsetLeft,
+          width: el.offsetWidth,
+          opacity: 1,
+        });
+      } else {
+        setPillStyle((prev) => ({ ...prev, opacity: 0 }));
+      }
+    };
+
+    updatePill();
+    const raf = requestAnimationFrame(updatePill);
+    window.addEventListener("resize", updatePill);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener("resize", updatePill);
+    };
+  }, [pathname]);
 
   // Close dropdowns on outside click
   useEffect(() => {
@@ -167,9 +216,10 @@ export function Navbar() {
     }
   };
 
-  const handleOpenTour = () => {
+  const handleOpenTour = (e?: React.MouseEvent) => {
     if (typeof window !== "undefined") {
-      window.dispatchEvent(new CustomEvent("open-reviewflash-tour"));
+      const detail = e ? { x: e.clientX, y: e.clientY } : undefined;
+      window.dispatchEvent(new CustomEvent("open-reviewflash-tour", { detail }));
       setMoreDropdownOpen(false);
       setMobileMenuOpen(false);
     }
@@ -185,9 +235,10 @@ export function Navbar() {
     }
   };
 
-  const handleOpenWhatsNew = () => {
+  const handleOpenWhatsNew = (e?: React.MouseEvent) => {
     if (typeof window !== "undefined") {
-      window.dispatchEvent(new CustomEvent("open-whats-new"));
+      const detail = e ? { x: e.clientX, y: e.clientY } : undefined;
+      window.dispatchEvent(new CustomEvent("open-whats-new", { detail }));
       setMoreDropdownOpen(false);
       setUserDropdownOpen(false);
       setMobileMenuOpen(false);
@@ -218,33 +269,66 @@ export function Navbar() {
 
             <button
               type="button"
-              onClick={handleOpenWhatsNew}
-              title="View What's New in v1.5.0"
+              onClick={(e) => handleOpenWhatsNew(e)}
+              title={`View What's New in ${APP_VERSION}`}
               className="hidden sm:inline-flex items-center gap-1 rounded-full border border-slate-800 bg-slate-900/90 px-2 py-0.5 text-[10px] font-mono font-semibold text-slate-400 hover:border-cyan-500/40 hover:text-cyan-300 transition cursor-pointer"
             >
               <Rocket size={10} className="text-cyan-400 animate-pulse" />
-              <span>v1.5.0</span>
+              <span>{APP_VERSION}</span>
             </button>
           </div>
 
 
 
-          {/* MIDDLE: Primary Nav Links (Visible md & up, no overlap) */}
-          <div className="hidden md:flex items-center gap-1.5 bg-slate-900/70 p-1 rounded-2xl border border-slate-800/80">
-            {primaryNavItems.map(({ href, label, icon: Icon }) => {
+          {/* MIDDLE: Primary Nav Links with Sliding Indicator & Directional Swiping (Visible md & up) */}
+          <div
+            ref={navContainerRef}
+            className="relative hidden md:flex items-center gap-1.5 bg-slate-900/70 p-1 rounded-2xl border border-slate-800/80 shadow-inner"
+          >
+            {/* Sliding Pill Indicator */}
+            <span
+              style={{
+                transform: `translateX(${pillStyle.left}px)`,
+                width: `${pillStyle.width}px`,
+                opacity: pillStyle.opacity,
+              }}
+              className="absolute top-1 bottom-1 left-0 rounded-xl bg-cyan-500 shadow-md shadow-cyan-500/25 transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] pointer-events-none z-0"
+            />
+
+            {primaryNavItems.map(({ href, label, icon: Icon }, idx) => {
               const isActive = pathname === href;
               return (
                 <Link
                   key={href}
+                  ref={(el) => {
+                    navTabRefs.current[idx] = el;
+                  }}
                   href={href}
-                  className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-semibold transition shrink-0 ${
+                  className={`relative z-10 inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-semibold transition-all duration-200 shrink-0 select-none ${
                     isActive
-                      ? "bg-cyan-500 text-slate-950 font-bold shadow-sm shadow-cyan-500/20"
-                      : "text-slate-300 hover:text-white hover:bg-slate-800/60"
+                      ? "text-slate-950 font-bold"
+                      : "text-slate-300 hover:text-white hover:bg-slate-800/50 active:scale-95"
                   }`}
                 >
-                  <Icon size={14} className={isActive ? "text-slate-950" : "text-cyan-400"} />
-                  <span>{label}</span>
+                  <Icon
+                    size={14}
+                    className={`transition-transform duration-200 ${
+                      isActive
+                        ? "text-slate-950 scale-110"
+                        : "text-cyan-400 group-hover:scale-110"
+                    }`}
+                  />
+                  <span
+                    className={
+                      isActive
+                        ? navDirection === "left"
+                          ? "animate-in slide-in-from-right-1 duration-200"
+                          : "animate-in slide-in-from-left-1 duration-200"
+                        : ""
+                    }
+                  >
+                    {label}
+                  </span>
                 </Link>
               );
             })}
@@ -272,124 +356,143 @@ export function Navbar() {
                   setMoreDropdownOpen(!moreDropdownOpen);
                   setUserDropdownOpen(false);
                 }}
-                className={`inline-flex items-center gap-1 rounded-xl border px-2.5 py-1.5 text-xs font-medium transition cursor-pointer ${
+                className={`group inline-flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs font-semibold transition-all duration-200 hover:scale-105 active:scale-95 cursor-pointer shadow-sm ${
                   moreDropdownOpen
-                    ? "border-cyan-500/50 bg-cyan-500/10 text-cyan-300"
+                    ? "border-cyan-500/60 bg-cyan-500/15 text-cyan-300 shadow-cyan-500/15"
                     : "border-slate-800 bg-slate-900/80 text-slate-300 hover:border-slate-700 hover:text-white"
                 }`}
               >
-                <HelpCircle size={14} className="text-slate-400" />
+                <HelpCircle size={14} className="text-slate-400 group-hover:rotate-12 group-hover:text-cyan-400 transition-transform duration-200" />
                 <span className="text-xs">Help</span>
-                <ChevronDown size={13} className={`transition duration-150 ${moreDropdownOpen ? "rotate-180 text-cyan-400" : "text-slate-500"}`} />
+                <ChevronDown size={13} className={`transition-transform duration-300 ease-out ${moreDropdownOpen ? "rotate-180 text-cyan-400" : "text-slate-500"}`} />
               </button>
 
-              {moreDropdownOpen && (
-                <div className="absolute right-0 mt-2 w-56 rounded-2xl border border-slate-800 bg-slate-950/95 p-2 shadow-2xl backdrop-blur-2xl animate-in fade-in slide-in-from-top-2 duration-150 z-50">
-                  <div className="px-2.5 py-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-800/80 mb-1">
-                    Help &amp; Resources
-                  </div>
-
-                  <Link
-                    href="/help"
-                    onClick={() => setMoreDropdownOpen(false)}
-                    className="flex items-center gap-2.5 rounded-xl px-2.5 py-2 text-xs font-medium text-slate-200 hover:bg-slate-900 hover:text-white transition"
-                  >
-                    <HelpCircle size={15} className="text-cyan-400" />
-                    <div className="flex-1">
-                      <div>Help &amp; FAQ Center</div>
-                      <div className="text-[10px] text-slate-400">Insertion guide &amp; answers</div>
-                    </div>
-                  </Link>
-
-                  <button
-                    type="button"
-                    onClick={handleOpenTour}
-                    className="w-full flex items-center gap-2.5 rounded-xl px-2.5 py-2 text-xs font-medium text-slate-200 hover:bg-slate-900 hover:text-white transition text-left cursor-pointer"
-                  >
-                    <GraduationCap size={15} className="text-emerald-400" />
-                    <div className="flex-1">
-                      <div>Interactive Tour</div>
-                      <div className="text-[10px] text-slate-400">Step-by-step walkthrough</div>
-                    </div>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={handleOpenWhatsNew}
-                    className="w-full flex items-center gap-2.5 rounded-xl px-2.5 py-2 text-xs font-medium text-slate-200 hover:bg-slate-900 hover:text-white transition text-left cursor-pointer"
-                  >
-                    <Rocket size={15} className="text-amber-400" />
-                    <div className="flex-1">
-                      <div className="flex items-center gap-1.5">
-                        <span>What&apos;s New</span>
-                        <span className="rounded bg-cyan-500/20 text-cyan-300 px-1 py-0.2 text-[9px] font-bold font-mono">v2.0.0</span>
-                      </div>
-                      <div className="text-[10px] text-slate-400">Announcement &amp; features</div>
-                    </div>
-                  </button>
-
-                  <Link
-                    href="/support"
-                    onClick={() => setMoreDropdownOpen(false)}
-                    className="flex items-center gap-2.5 rounded-xl px-2.5 py-2 text-xs font-medium text-slate-200 hover:bg-slate-900 hover:text-white transition"
-                  >
-                    <Bug size={15} className="text-cyan-400" />
-                    <div className="flex-1">
-                      <div>Support &amp; Bugs</div>
-                      <div className="text-[10px] text-slate-400">Report issues &amp; feedback</div>
-                    </div>
-                  </Link>
-
-                  <Link
-                    href="/terms"
-                    onClick={() => setMoreDropdownOpen(false)}
-                    className="flex items-center gap-2.5 rounded-xl px-2.5 py-2 text-xs font-medium text-slate-200 hover:bg-slate-900 hover:text-white transition"
-                  >
-                    <Scale size={15} className="text-indigo-400" />
-                    <div className="flex-1">
-                      <div>Terms of Service</div>
-                      <div className="text-[10px] text-slate-400">Usage terms &amp; rules</div>
-                    </div>
-                  </Link>
-
-                  <Link
-                    href="/privacy"
-                    onClick={() => setMoreDropdownOpen(false)}
-                    className="flex items-center gap-2.5 rounded-xl px-2.5 py-2 text-xs font-medium text-slate-200 hover:bg-slate-900 hover:text-white transition"
-                  >
-                    <Shield size={15} className="text-emerald-400" />
-                    <div className="flex-1">
-                      <div>Privacy Policy</div>
-                      <div className="text-[10px] text-slate-400">Data protection notice</div>
-                    </div>
-                  </Link>
-
-                  <Link
-                    href="/data-deletion"
-                    onClick={() => setMoreDropdownOpen(false)}
-                    className="flex items-center gap-2.5 rounded-xl px-2.5 py-2 text-xs font-medium text-slate-200 hover:bg-slate-900 hover:text-white transition"
-                  >
-                    <Trash2 size={15} className="text-rose-400" />
-                    <div className="flex-1">
-                      <div>Data Deletion</div>
-                      <div className="text-[10px] text-slate-400">Delete account &amp; data</div>
-                    </div>
-                  </Link>
-
-                  <Link
-                    href="/decks"
-                    onClick={() => setMoreDropdownOpen(false)}
-                    className="flex items-center gap-2.5 rounded-xl px-2.5 py-2 text-xs font-medium text-slate-200 hover:bg-slate-900 hover:text-white transition"
-                  >
-                    <Share2 size={15} className="text-cyan-400" />
-                    <div className="flex-1">
-                      <div>Import Share Code</div>
-                      <div className="text-[10px] text-slate-400">Load peer decks</div>
-                    </div>
-                  </Link>
+              <div
+                className={`absolute right-0 mt-2 w-60 rounded-2xl border border-slate-800/90 bg-slate-950/95 p-2 shadow-2xl backdrop-blur-2xl origin-top-right transition-all duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] z-50 ${
+                  moreDropdownOpen
+                    ? "opacity-100 scale-100 translate-y-0 pointer-events-auto"
+                    : "opacity-0 scale-95 -translate-y-2 pointer-events-none"
+                }`}
+              >
+                <div className="px-2.5 py-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-800/80 mb-1">
+                  Help &amp; Resources
                 </div>
 
-              )}
+                <Link
+                  href="/help"
+                  onClick={() => setMoreDropdownOpen(false)}
+                  className="group flex items-center gap-2.5 rounded-xl px-2.5 py-2 text-xs font-medium text-slate-200 hover:bg-slate-900/90 hover:text-white transition-all duration-200 hover:translate-x-1.5 active:scale-[0.98]"
+                >
+                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-cyan-500/10 text-cyan-400 group-hover:bg-cyan-500/20 group-hover:scale-115 group-hover:rotate-6 transition-all duration-200">
+                    <HelpCircle size={15} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-semibold group-hover:text-cyan-300 transition-colors">Help &amp; FAQ Center</div>
+                    <div className="text-[10px] text-slate-400">Insertion guide &amp; answers</div>
+                  </div>
+                </Link>
+
+                <button
+                  type="button"
+                  onClick={(e) => handleOpenTour(e)}
+                  className="w-full group flex items-center gap-2.5 rounded-xl px-2.5 py-2 text-xs font-medium text-slate-200 hover:bg-slate-900/90 hover:text-white transition-all duration-200 hover:translate-x-1.5 active:scale-[0.98] text-left cursor-pointer"
+                >
+                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-400 group-hover:bg-emerald-500/20 group-hover:scale-115 group-hover:-rotate-6 transition-all duration-200">
+                    <GraduationCap size={15} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-semibold group-hover:text-emerald-300 transition-colors">Interactive Tour</div>
+                    <div className="text-[10px] text-slate-400">Step-by-step walkthrough</div>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={(e) => handleOpenWhatsNew(e)}
+                  className="w-full group flex items-center gap-2.5 rounded-xl px-2.5 py-2 text-xs font-medium text-slate-200 hover:bg-slate-900/90 hover:text-white transition-all duration-200 hover:translate-x-1.5 active:scale-[0.98] text-left cursor-pointer"
+                >
+                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-amber-500/10 text-amber-400 group-hover:bg-amber-500/20 group-hover:scale-115 group-hover:-translate-y-0.5 group-hover:translate-x-0.5 transition-all duration-200">
+                    <Rocket size={15} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5 font-semibold group-hover:text-amber-300 transition-colors">
+                      <span>What&apos;s New</span>
+                      <span className="rounded bg-cyan-500/20 text-cyan-300 px-1 py-0.2 text-[9px] font-bold font-mono">{APP_VERSION}</span>
+                    </div>
+                    <div className="text-[10px] text-slate-400">Announcement &amp; features</div>
+                  </div>
+                </button>
+
+                <Link
+                  href="/support"
+                  onClick={() => setMoreDropdownOpen(false)}
+                  className="group flex items-center gap-2.5 rounded-xl px-2.5 py-2 text-xs font-medium text-slate-200 hover:bg-slate-900/90 hover:text-white transition-all duration-200 hover:translate-x-1.5 active:scale-[0.98]"
+                >
+                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-rose-500/10 text-rose-400 group-hover:bg-rose-500/20 group-hover:scale-115 group-hover:rotate-12 transition-all duration-200">
+                    <Bug size={15} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-semibold group-hover:text-rose-300 transition-colors">Support &amp; Bugs</div>
+                    <div className="text-[10px] text-slate-400">Report issues &amp; feedback</div>
+                  </div>
+                </Link>
+
+                <Link
+                  href="/terms"
+                  onClick={() => setMoreDropdownOpen(false)}
+                  className="group flex items-center gap-2.5 rounded-xl px-2.5 py-2 text-xs font-medium text-slate-200 hover:bg-slate-900/90 hover:text-white transition-all duration-200 hover:translate-x-1.5 active:scale-[0.98]"
+                >
+                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-indigo-500/10 text-indigo-400 group-hover:bg-indigo-500/20 group-hover:scale-115 group-hover:-rotate-6 transition-all duration-200">
+                    <Scale size={15} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-semibold group-hover:text-indigo-300 transition-colors">Terms of Service</div>
+                    <div className="text-[10px] text-slate-400">Usage terms &amp; rules</div>
+                  </div>
+                </Link>
+
+                <Link
+                  href="/privacy"
+                  onClick={() => setMoreDropdownOpen(false)}
+                  className="group flex items-center gap-2.5 rounded-xl px-2.5 py-2 text-xs font-medium text-slate-200 hover:bg-slate-900/90 hover:text-white transition-all duration-200 hover:translate-x-1.5 active:scale-[0.98]"
+                >
+                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-400 group-hover:bg-emerald-500/20 group-hover:scale-115 group-hover:rotate-6 transition-all duration-200">
+                    <Shield size={15} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-semibold group-hover:text-emerald-300 transition-colors">Privacy Policy</div>
+                    <div className="text-[10px] text-slate-400">Data protection notice</div>
+                  </div>
+                </Link>
+
+                <Link
+                  href="/data-deletion"
+                  onClick={() => setMoreDropdownOpen(false)}
+                  className="group flex items-center gap-2.5 rounded-xl px-2.5 py-2 text-xs font-medium text-slate-200 hover:bg-slate-900/90 hover:text-white transition-all duration-200 hover:translate-x-1.5 active:scale-[0.98]"
+                >
+                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-rose-500/10 text-rose-400 group-hover:bg-rose-500/20 group-hover:scale-115 group-hover:rotate-12 transition-all duration-200">
+                    <Trash2 size={15} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-semibold group-hover:text-rose-300 transition-colors">Data Deletion</div>
+                    <div className="text-[10px] text-slate-400">Delete account &amp; data</div>
+                  </div>
+                </Link>
+
+                <Link
+                  href="/decks"
+                  onClick={() => setMoreDropdownOpen(false)}
+                  className="group flex items-center gap-2.5 rounded-xl px-2.5 py-2 text-xs font-medium text-slate-200 hover:bg-slate-900/90 hover:text-white transition-all duration-200 hover:translate-x-1.5 active:scale-[0.98]"
+                >
+                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-cyan-500/10 text-cyan-400 group-hover:bg-cyan-500/20 group-hover:scale-115 group-hover:rotate-6 transition-all duration-200">
+                    <Share2 size={15} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-semibold group-hover:text-cyan-300 transition-colors">Import Share Code</div>
+                    <div className="text-[10px] text-slate-400">Load peer decks</div>
+                  </div>
+                </Link>
+              </div>
             </div>
 
             {/* 3. User Account Menu Dropdown */}
@@ -543,251 +646,276 @@ export function Navbar() {
               type="button"
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
               aria-label="Toggle Navigation Menu"
-              className="md:hidden inline-flex items-center justify-center rounded-xl border border-slate-800 bg-slate-900 p-2 text-slate-300 hover:border-cyan-500/50 hover:text-white transition cursor-pointer"
+              className={`md:hidden inline-flex items-center justify-center rounded-xl border p-2 transition-all duration-200 hover:scale-105 active:scale-90 cursor-pointer ${
+                mobileMenuOpen
+                  ? "border-cyan-500/60 bg-cyan-500/15 text-cyan-300 shadow-md shadow-cyan-500/20"
+                  : "border-slate-800 bg-slate-900 text-slate-300 hover:border-cyan-500/50 hover:text-white"
+              }`}
             >
-              {mobileMenuOpen ? <X size={18} className="text-cyan-400" /> : <Menu size={18} />}
+              <div className={`transition-transform duration-300 ease-out ${mobileMenuOpen ? "rotate-90 scale-110" : "rotate-0 scale-100"}`}>
+                {mobileMenuOpen ? <X size={18} className="text-cyan-400" /> : <Menu size={18} />}
+              </div>
             </button>
           </div>
         </div>
 
         {/* MOBILE & TABLET DRAWER (When hamburger is clicked) */}
-        {mobileMenuOpen && (
-          <div className="md:hidden border-t border-slate-800/80 bg-slate-950/95 backdrop-blur-2xl px-4 py-4 space-y-4 animate-in slide-in-from-top-2 duration-200 shadow-2xl">
-            {/* User Profile Card */}
-            <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-3.5">
-              {isFirebaseConfigured ? (
-                user ? (
-                  <div className="space-y-2.5">
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        <div className="h-9 w-9 shrink-0 rounded-full bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-300 font-bold text-sm">
-                          {user.displayName ? user.displayName[0].toUpperCase() : "U"}
+        <div
+          className={`md:hidden overflow-hidden transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] border-slate-800/80 bg-slate-950/95 backdrop-blur-2xl shadow-2xl ${
+            mobileMenuOpen
+              ? "max-h-[90vh] opacity-100 border-t py-4 px-4 space-y-4 pointer-events-auto"
+              : "max-h-0 opacity-0 border-t-0 py-0 px-4 pointer-events-none"
+          }`}
+        >
+          {/* User Profile Card */}
+          <div className="rounded-2xl border border-slate-800 bg-slate-900/80 p-3.5">
+            {isFirebaseConfigured ? (
+              user ? (
+                <div className="space-y-2.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="h-9 w-9 shrink-0 rounded-full bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-300 font-bold text-sm">
+                        {user.displayName ? user.displayName[0].toUpperCase() : "U"}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="text-xs font-bold text-slate-100 truncate">
+                          {user.displayName || "Learner"}
                         </div>
-                        <div className="min-w-0">
-                          <div className="text-xs font-bold text-slate-100 truncate">
-                            {user.displayName || "Learner"}
-                          </div>
-                          <div className="text-[11px] text-slate-400 truncate">
-                            {user.email}
-                          </div>
+                        <div className="text-[11px] text-slate-400 truncate">
+                          {user.email}
                         </div>
                       </div>
-                    </div>
-
-                    <div className="flex items-center gap-2 pt-1 border-t border-slate-800/80">
-                      <button
-                        type="button"
-                        onClick={handleCopyMyId}
-                        className="flex-1 flex items-center justify-center gap-1.5 rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-xs font-mono text-slate-300 hover:text-white transition cursor-pointer"
-                      >
-                        {copiedId ? <Check size={13} className="text-emerald-400" /> : <Copy size={13} />}
-                        <span>{copiedId ? "Copied User ID" : "Copy User ID"}</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={handleSignOut}
-                        className="flex items-center justify-center gap-1.5 rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs font-semibold text-rose-300 hover:bg-rose-500/20 transition cursor-pointer"
-                      >
-                        <LogOut size={13} />
-                        <span>Sign out</span>
-                      </button>
                     </div>
                   </div>
-                ) : (
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <div className="text-xs font-bold text-slate-200">Guest Learner</div>
-                        <div className="text-[10px] text-slate-400 font-mono">
-                          ID: {anonId.slice(0, 12)}…
-                        </div>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={handleCopyMyId}
-                        className="rounded-lg border border-slate-700 bg-slate-950 px-2 py-1 text-[11px] font-mono text-slate-300 hover:text-cyan-300 transition cursor-pointer"
-                      >
-                        {copiedId ? "Copied!" : "Copy ID"}
-                      </button>
-                    </div>
 
+                  <div className="flex items-center gap-2 pt-1 border-t border-slate-800/80">
                     <button
                       type="button"
-                      onClick={() => {
-                        setMobileMenuOpen(false);
-                        setAuthModalOpen(true);
-                      }}
-                      className="w-full flex items-center justify-center gap-2 rounded-xl bg-cyan-500 px-4 py-2.5 text-xs font-bold text-slate-950 hover:bg-cyan-400 transition cursor-pointer shadow-md"
+                      onClick={handleCopyMyId}
+                      className="flex-1 flex items-center justify-center gap-1.5 rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-xs font-mono text-slate-300 hover:text-white hover:scale-[1.02] active:scale-[0.98] transition-all duration-200 cursor-pointer"
                     >
-                      <LogIn size={15} />
-                      <span>Sign In / Create Account</span>
+                      {copiedId ? <Check size={13} className="text-emerald-400" /> : <Copy size={13} />}
+                      <span>{copiedId ? "Copied User ID" : "Copy User ID"}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleSignOut}
+                      className="flex items-center justify-center gap-1.5 rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs font-semibold text-rose-300 hover:bg-rose-500/20 hover:scale-[1.02] active:scale-[0.98] transition-all duration-200 cursor-pointer"
+                    >
+                      <LogOut size={13} />
+                      <span>Sign out</span>
                     </button>
                   </div>
-                )
-              ) : null}
-            </div>
-
-            {/* Navigation Links */}
-            <div className="space-y-1">
-              <div className="text-[10px] font-bold text-slate-500 uppercase tracking-widest px-2 mb-1">
-                Menu
-              </div>
-
-              <Link
-                href="/"
-                onClick={() => setMobileMenuOpen(false)}
-                className={`flex items-center justify-between rounded-xl px-3.5 py-2.5 text-sm font-medium transition ${
-                  pathname === "/"
-                    ? "border border-cyan-500/50 bg-cyan-500/10 text-cyan-300 shadow-sm"
-                    : "text-slate-300 hover:bg-slate-900 hover:text-white"
-                }`}
-              >
-                <div className="flex items-center gap-3">
-                  <House size={16} className={pathname === "/" ? "text-cyan-300" : "text-slate-400"} />
-                  <span>Home</span>
                 </div>
-              </Link>
-
-              {primaryNavItems.map(({ href, label, icon: Icon }) => {
-                const isActive = pathname === href;
-                return (
-                  <Link
-                    key={href}
-                    href={href}
-                    onClick={() => setMobileMenuOpen(false)}
-                    className={`flex items-center justify-between rounded-xl px-3.5 py-2.5 text-sm font-medium transition ${
-                      isActive
-                        ? "border border-cyan-500/50 bg-cyan-500/10 text-cyan-300 shadow-sm"
-                        : "text-slate-300 hover:bg-slate-900 hover:text-white"
-                    }`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <Icon size={16} className={isActive ? "text-cyan-300" : "text-slate-400"} />
-                      <span>{label}</span>
+              ) : (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="text-xs font-bold text-slate-200">Guest Learner</div>
+                      <div className="text-[10px] text-slate-400 font-mono">
+                        ID: {anonId.slice(0, 12)}…
+                      </div>
                     </div>
-                    {isActive && <span className="h-1.5 w-1.5 rounded-full bg-cyan-400" />}
-                  </Link>
-                );
-              })}
+                    <button
+                      type="button"
+                      onClick={handleCopyMyId}
+                      className="rounded-lg border border-slate-700 bg-slate-950 px-2 py-1 text-[11px] font-mono text-slate-300 hover:text-cyan-300 hover:scale-105 active:scale-95 transition-all duration-200 cursor-pointer"
+                    >
+                      {copiedId ? "Copied!" : "Copy ID"}
+                    </button>
+                  </div>
 
-              <Link
-                href="/help"
-                onClick={() => setMobileMenuOpen(false)}
-                className={`flex items-center justify-between rounded-xl px-3.5 py-2.5 text-sm font-medium transition ${
-                  pathname === "/help"
-                    ? "border border-cyan-500/50 bg-cyan-500/10 text-cyan-300 shadow-sm"
-                    : "text-slate-300 hover:bg-slate-900 hover:text-white"
-                }`}
-              >
-                <div className="flex items-center gap-3">
-                  <HelpCircle size={16} className={pathname === "/help" ? "text-cyan-300" : "text-slate-400"} />
-                  <span>Help &amp; FAQs</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMobileMenuOpen(false);
+                      setAuthModalOpen(true);
+                    }}
+                    className="w-full flex items-center justify-center gap-2 rounded-xl bg-cyan-500 px-4 py-2.5 text-xs font-bold text-slate-950 hover:bg-cyan-400 hover:scale-[1.02] active:scale-[0.98] transition-all duration-200 cursor-pointer shadow-md"
+                  >
+                    <LogIn size={15} />
+                    <span>Sign In / Create Account</span>
+                  </button>
                 </div>
-                {pathname === "/help" && <span className="h-1.5 w-1.5 rounded-full bg-cyan-400" />}
-              </Link>
+              )
+            ) : null}
+          </div>
 
-              <Link
-                href="/updates"
-                onClick={() => setMobileMenuOpen(false)}
-                className={`flex items-center justify-between rounded-xl px-3.5 py-2.5 text-sm font-medium transition ${
-                  pathname === "/updates"
-                    ? "border border-cyan-500/50 bg-cyan-500/10 text-cyan-300 shadow-sm"
-                    : "text-slate-300 hover:bg-slate-900 hover:text-white"
-                }`}
-              >
-                <div className="flex items-center gap-3">
-                  <Rocket size={16} className={pathname === "/updates" ? "text-cyan-300" : "text-slate-400"} />
-                  <span>Updates &amp; Changelog</span>
-                </div>
-                <span className="rounded bg-cyan-500/20 text-cyan-300 px-1.5 py-0.5 text-[10px] font-bold font-mono">v2.0.0</span>
-              </Link>
-
-              <Link
-                href="/support"
-                onClick={() => setMobileMenuOpen(false)}
-                className={`flex items-center justify-between rounded-xl px-3.5 py-2.5 text-sm font-medium transition ${
-                  pathname === "/support"
-                    ? "border border-cyan-500/50 bg-cyan-500/10 text-cyan-300 shadow-sm"
-                    : "text-slate-300 hover:bg-slate-900 hover:text-white"
-                }`}
-              >
-                <div className="flex items-center gap-3">
-                  <Bug size={16} className={pathname === "/support" ? "text-cyan-300" : "text-slate-400"} />
-                  <span>Support &amp; Report Bug</span>
-                </div>
-              </Link>
-
-              <Link
-                href="/terms"
-                onClick={() => setMobileMenuOpen(false)}
-                className={`flex items-center justify-between rounded-xl px-3.5 py-2.5 text-sm font-medium transition ${
-                  pathname === "/terms"
-                    ? "border border-cyan-500/50 bg-cyan-500/10 text-cyan-300 shadow-sm"
-                    : "text-slate-300 hover:bg-slate-900 hover:text-white"
-                }`}
-              >
-                <div className="flex items-center gap-3">
-                  <Scale size={16} className={pathname === "/terms" ? "text-cyan-300" : "text-slate-400"} />
-                  <span>Terms of Service</span>
-                </div>
-              </Link>
-
-              <Link
-                href="/privacy"
-                onClick={() => setMobileMenuOpen(false)}
-                className={`flex items-center justify-between rounded-xl px-3.5 py-2.5 text-sm font-medium transition ${
-                  pathname === "/privacy"
-                    ? "border border-cyan-500/50 bg-cyan-500/10 text-cyan-300 shadow-sm"
-                    : "text-slate-300 hover:bg-slate-900 hover:text-white"
-                }`}
-              >
-                <div className="flex items-center gap-3">
-                  <Shield size={16} className={pathname === "/privacy" ? "text-cyan-300" : "text-slate-400"} />
-                  <span>Privacy Policy</span>
-                </div>
-              </Link>
-
-              <Link
-                href="/data-deletion"
-                onClick={() => setMobileMenuOpen(false)}
-                className={`flex items-center justify-between rounded-xl px-3.5 py-2.5 text-sm font-medium transition ${
-                  pathname === "/data-deletion"
-                    ? "border border-rose-500/50 bg-rose-500/10 text-rose-300 shadow-sm"
-                    : "text-slate-300 hover:bg-slate-900 hover:text-white"
-                }`}
-              >
-                <div className="flex items-center gap-3">
-                  <Trash2 size={16} className={pathname === "/data-deletion" ? "text-rose-400" : "text-slate-400"} />
-                  <span>User Data Deletion</span>
-                </div>
-              </Link>
+          {/* Navigation Links */}
+          <div className="space-y-1">
+            <div className="text-[10px] font-bold text-slate-500 uppercase tracking-widest px-2 mb-1">
+              Menu
             </div>
 
-
-            {/* Quick Actions inside Drawer */}
-            <div className="pt-2 border-t border-slate-800/80 space-y-2">
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={handleOpenTour}
-                  className="flex items-center justify-center gap-1.5 rounded-xl border border-cyan-500/40 bg-cyan-500/10 px-3 py-2 text-xs font-bold text-cyan-300 hover:bg-cyan-500/20 transition cursor-pointer"
-                >
-                  <GraduationCap size={15} />
-                  <span>Tour 🎓</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handleOpenWhatsNew}
-                  className="flex items-center justify-center gap-1.5 rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs font-bold text-amber-300 hover:bg-amber-500/20 transition cursor-pointer"
-                >
-                  <Rocket size={15} />
-                  <span>What&apos;s New 🚀</span>
-                </button>
+            <Link
+              href="/"
+              onClick={() => setMobileMenuOpen(false)}
+              className={`group flex items-center justify-between rounded-xl px-3.5 py-2.5 text-sm font-medium transition-all duration-200 hover:translate-x-1.5 active:scale-[0.98] ${
+                pathname === "/"
+                  ? "border border-cyan-500/50 bg-cyan-500/10 text-cyan-300 shadow-sm"
+                  : "text-slate-300 hover:bg-slate-900 hover:text-white"
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-cyan-500/10 text-cyan-400 group-hover:scale-115 group-hover:rotate-6 transition-all duration-200">
+                  <House size={16} />
+                </div>
+                <span className="font-semibold group-hover:text-cyan-300 transition-colors">Home</span>
               </div>
+            </Link>
+
+            {primaryNavItems.map(({ href, label, icon: Icon }) => {
+              const isActive = pathname === href;
+              return (
+                <Link
+                  key={href}
+                  href={href}
+                  onClick={() => setMobileMenuOpen(false)}
+                  className={`group flex items-center justify-between rounded-xl px-3.5 py-2.5 text-sm font-medium transition-all duration-200 hover:translate-x-1.5 active:scale-[0.98] ${
+                    isActive
+                      ? "border border-cyan-500/50 bg-cyan-500/10 text-cyan-300 shadow-sm"
+                      : "text-slate-300 hover:bg-slate-900 hover:text-white"
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-cyan-500/10 text-cyan-400 group-hover:scale-115 group-hover:rotate-6 transition-all duration-200">
+                      <Icon size={16} />
+                    </div>
+                    <span className="font-semibold group-hover:text-cyan-300 transition-colors">{label}</span>
+                  </div>
+                  {isActive && <span className="h-1.5 w-1.5 rounded-full bg-cyan-400" />}
+                </Link>
+              );
+            })}
+
+            <Link
+              href="/help"
+              onClick={() => setMobileMenuOpen(false)}
+              className={`group flex items-center justify-between rounded-xl px-3.5 py-2.5 text-sm font-medium transition-all duration-200 hover:translate-x-1.5 active:scale-[0.98] ${
+                pathname === "/help"
+                  ? "border border-cyan-500/50 bg-cyan-500/10 text-cyan-300 shadow-sm"
+                  : "text-slate-300 hover:bg-slate-900 hover:text-white"
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-cyan-500/10 text-cyan-400 group-hover:scale-115 group-hover:rotate-6 transition-all duration-200">
+                  <HelpCircle size={16} />
+                </div>
+                <span className="font-semibold group-hover:text-cyan-300 transition-colors">Help &amp; FAQs</span>
+              </div>
+              {pathname === "/help" && <span className="h-1.5 w-1.5 rounded-full bg-cyan-400" />}
+            </Link>
+
+            <Link
+              href="/updates"
+              onClick={() => setMobileMenuOpen(false)}
+              className={`group flex items-center justify-between rounded-xl px-3.5 py-2.5 text-sm font-medium transition-all duration-200 hover:translate-x-1.5 active:scale-[0.98] ${
+                pathname === "/updates"
+                  ? "border border-cyan-500/50 bg-cyan-500/10 text-cyan-300 shadow-sm"
+                  : "text-slate-300 hover:bg-slate-900 hover:text-white"
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-amber-500/10 text-amber-400 group-hover:scale-115 group-hover:-translate-y-0.5 group-hover:translate-x-0.5 transition-all duration-200">
+                  <Rocket size={16} />
+                </div>
+                <span className="font-semibold group-hover:text-amber-300 transition-colors">Updates &amp; Changelog</span>
+              </div>
+              <span className="rounded bg-cyan-500/20 text-cyan-300 px-1.5 py-0.5 text-[10px] font-bold font-mono">{APP_VERSION}</span>
+            </Link>
+
+            <Link
+              href="/support"
+              onClick={() => setMobileMenuOpen(false)}
+              className={`group flex items-center justify-between rounded-xl px-3.5 py-2.5 text-sm font-medium transition-all duration-200 hover:translate-x-1.5 active:scale-[0.98] ${
+                pathname === "/support"
+                  ? "border border-cyan-500/50 bg-cyan-500/10 text-cyan-300 shadow-sm"
+                  : "text-slate-300 hover:bg-slate-900 hover:text-white"
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-rose-500/10 text-rose-400 group-hover:scale-115 group-hover:rotate-12 transition-all duration-200">
+                  <Bug size={16} />
+                </div>
+                <span className="font-semibold group-hover:text-rose-300 transition-colors">Support &amp; Report Bug</span>
+              </div>
+            </Link>
+
+            <Link
+              href="/terms"
+              onClick={() => setMobileMenuOpen(false)}
+              className={`group flex items-center justify-between rounded-xl px-3.5 py-2.5 text-sm font-medium transition-all duration-200 hover:translate-x-1.5 active:scale-[0.98] ${
+                pathname === "/terms"
+                  ? "border border-cyan-500/50 bg-cyan-500/10 text-cyan-300 shadow-sm"
+                  : "text-slate-300 hover:bg-slate-900 hover:text-white"
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-500/10 text-indigo-400 group-hover:scale-115 group-hover:-rotate-6 transition-all duration-200">
+                  <Scale size={16} />
+                </div>
+                <span className="font-semibold group-hover:text-indigo-300 transition-colors">Terms of Service</span>
+              </div>
+            </Link>
+
+            <Link
+              href="/privacy"
+              onClick={() => setMobileMenuOpen(false)}
+              className={`group flex items-center justify-between rounded-xl px-3.5 py-2.5 text-sm font-medium transition-all duration-200 hover:translate-x-1.5 active:scale-[0.98] ${
+                pathname === "/privacy"
+                  ? "border border-cyan-500/50 bg-cyan-500/10 text-cyan-300 shadow-sm"
+                  : "text-slate-300 hover:bg-slate-900 hover:text-white"
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-400 group-hover:scale-115 group-hover:rotate-6 transition-all duration-200">
+                  <Shield size={16} />
+                </div>
+                <span className="font-semibold group-hover:text-emerald-300 transition-colors">Privacy Policy</span>
+              </div>
+            </Link>
+
+            <Link
+              href="/data-deletion"
+              onClick={() => setMobileMenuOpen(false)}
+              className={`group flex items-center justify-between rounded-xl px-3.5 py-2.5 text-sm font-medium transition-all duration-200 hover:translate-x-1.5 active:scale-[0.98] ${
+                pathname === "/data-deletion"
+                  ? "border border-rose-500/50 bg-rose-500/10 text-rose-300 shadow-sm"
+                  : "text-slate-300 hover:bg-slate-900 hover:text-white"
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-rose-500/10 text-rose-400 group-hover:scale-115 group-hover:rotate-12 transition-all duration-200">
+                  <Trash2 size={16} />
+                </div>
+                <span className="font-semibold group-hover:text-rose-300 transition-colors">User Data Deletion</span>
+              </div>
+            </Link>
+          </div>
+
+          {/* Quick Actions inside Drawer */}
+          <div className="pt-2 border-t border-slate-800/80 space-y-2">
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={(e) => handleOpenTour(e)}
+                className="group flex items-center justify-center gap-1.5 rounded-xl border border-cyan-500/40 bg-cyan-500/10 px-3 py-2 text-xs font-bold text-cyan-300 hover:bg-cyan-500/20 hover:scale-105 active:scale-95 transition-all duration-200 cursor-pointer shadow-sm hover:shadow-cyan-500/20"
+              >
+                <GraduationCap size={15} className="group-hover:scale-115 group-hover:-rotate-12 transition-transform duration-200" />
+                <span>Tour 🎓</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={(e) => handleOpenWhatsNew(e)}
+                className="group flex items-center justify-center gap-1.5 rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs font-bold text-amber-300 hover:bg-amber-500/20 hover:scale-105 active:scale-95 transition-all duration-200 cursor-pointer shadow-sm hover:shadow-amber-500/20"
+              >
+                <Rocket size={15} className="group-hover:scale-115 group-hover:-translate-y-0.5 group-hover:translate-x-0.5 transition-transform duration-200" />
+                <span>What&apos;s New 🚀</span>
+              </button>
             </div>
           </div>
-        )}
+        </div>
       </nav>
 
 

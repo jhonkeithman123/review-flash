@@ -6,6 +6,8 @@ import Link from "next/link";
 import {
   BookOpen,
   CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
   Plus,
   RotateCcw,
   Share2,
@@ -24,6 +26,14 @@ import {
   shuffleArray,
 } from "@/lib/flashcardService";
 import { Deck, Flashcard, UserStats } from "@/types/flashcard";
+
+interface ReviewHistoryItem {
+  index: number;
+  cardId: string;
+  rated: boolean;
+  remembered?: boolean;
+  previousDifficulty?: number;
+}
 
 const initialStats: UserStats = {
   reviewed: 0,
@@ -44,6 +54,7 @@ function ReviewContent() {
   const [activeCards, setActiveCards] = useState<Flashcard[]>([]);
   const [isShuffleActive, setIsShuffleActive] = useState(false);
   const [currentIndex, setCurrentIndex] = useState(0);
+  const [reviewHistory, setReviewHistory] = useState<ReviewHistoryItem[]>([]);
   const [stats, setStats] = useState<UserStats>(initialStats);
   const [loading, setLoading] = useState(true);
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
@@ -89,6 +100,7 @@ function ReviewContent() {
       setActiveCards(baseCards);
     }
     setCurrentIndex(0);
+    setReviewHistory([]);
   }, [selectedDeckId, activeDeck, allCards]);
 
   const handleToggleShuffle = () => {
@@ -111,6 +123,7 @@ function ReviewContent() {
     }
 
     setActiveCards(newCardList);
+    setReviewHistory([]);
 
     // Keep user on the exact card they were studying
     if (currentlyViewedCard) {
@@ -123,6 +136,7 @@ function ReviewContent() {
     const currentlyViewedCard = activeCards[currentIndex];
     const reshuffled = shuffleArray(activeCards);
     setActiveCards(reshuffled);
+    setReviewHistory([]);
     if (currentlyViewedCard) {
       const newIdx = reshuffled.findIndex((c) => c.id === currentlyViewedCard.id);
       setCurrentIndex(newIdx >= 0 ? newIdx : 0);
@@ -132,6 +146,7 @@ function ReviewContent() {
   const handleSelectDeck = (deckId: string) => {
     setSelectedDeckId(deckId);
     setCurrentIndex(0);
+    setReviewHistory([]);
     if (deckId === "all") {
       router.push("/review");
     } else {
@@ -141,22 +156,51 @@ function ReviewContent() {
 
   const currentCard = activeCards[currentIndex];
 
-  const handleReview = (remembered: boolean) => {
+  // Broadcast live review context for AI Study Assistant (@mentions & deep website awareness)
+  useEffect(() => {
+    if (typeof window !== "undefined" && currentCard) {
+      window.dispatchEvent(
+        new CustomEvent("update-ai-context", {
+          detail: {
+            currentCard,
+            deckTitle: activeDeck?.title,
+            mode: "review",
+            reviewProgress: activeCards.length > 0 ? `Card ${currentIndex + 1} of ${activeCards.length}` : undefined,
+            stats,
+          },
+        })
+      );
+    }
+  }, [currentCard, activeDeck, currentIndex, activeCards.length, stats]);
+
+  const handleReview = useCallback((remembered: boolean) => {
     const now = Date.now();
     // 100ms debounce guard to prevent accidental rapid double-tap skips
     if (now - lastActionTimestamp.current < 100) return;
     lastActionTimestamp.current = now;
 
-    if (!currentCard) return;
-    const cardToRecord = currentCard;
+    const cardToRecord = activeCards[currentIndex];
+    if (!cardToRecord) return;
 
-    // 1. INSTANT OPTIMISTIC ADVANCE (0ms perceived latency):
+    // 1. SAVE TO REVIEW HISTORY FOR BACKTRACKING:
+    setReviewHistory((prev) => [
+      ...prev,
+      {
+        index: currentIndex,
+        cardId: cardToRecord.id,
+        rated: true,
+        remembered,
+        previousDifficulty: cardToRecord.difficulty,
+      },
+    ]);
+
+    // 2. INSTANT OPTIMISTIC ADVANCE (0ms perceived latency):
     setCurrentIndex((prev) => {
       if (activeCards.length <= 1) return 0;
       return (prev + 1) % activeCards.length;
     });
 
-    // 2. INSTANT STATS & CARD DIFFICULTY UPDATE:
+    // 3. INSTANT STATS & CARD DIFFICULTY UPDATE:
     setActiveCards((prev) =>
       prev.map((card) =>
         card.id === cardToRecord.id
@@ -181,11 +225,102 @@ function ReviewContent() {
       };
     });
 
-    // 3. ASYNC BACKGROUND PERSISTENCE (Non-blocking):
+    // 4. ASYNC BACKGROUND PERSISTENCE (Non-blocking):
     recordReviewResult(cardToRecord.id, remembered).catch((err) => {
       console.warn("Background review result persistence error:", err);
     });
-  };
+  }, [activeCards, currentIndex]);
+
+  const handlePreviousCard = useCallback(() => {
+    const now = Date.now();
+    if (now - lastActionTimestamp.current < 100) return;
+    lastActionTimestamp.current = now;
+
+    if (reviewHistory.length > 0) {
+      const lastItem = reviewHistory[reviewHistory.length - 1];
+      setReviewHistory((prev) => prev.slice(0, -1));
+      setCurrentIndex(lastItem.index);
+
+      // Roll back stats if this card was previously rated
+      if (lastItem.rated) {
+        setStats((prev) => {
+          const reviewed = Math.max(0, prev.reviewed - 1);
+          const correct = Math.max(0, prev.correct - (lastItem.remembered ? 1 : 0));
+          return {
+            ...prev,
+            reviewed,
+            correct,
+            accuracy: reviewed > 0 ? Math.round((correct / reviewed) * 100) : 100,
+          };
+        });
+
+        if (lastItem.previousDifficulty !== undefined) {
+          setActiveCards((prev) =>
+            prev.map((c) =>
+              c.id === lastItem.cardId ? { ...c, difficulty: lastItem.previousDifficulty! } : c
+            )
+          );
+        }
+      }
+    } else if (currentIndex > 0) {
+      setCurrentIndex((prev) => prev - 1);
+    }
+  }, [reviewHistory, currentIndex]);
+
+  const handleSkipCard = useCallback(() => {
+    const now = Date.now();
+    if (now - lastActionTimestamp.current < 100) return;
+    lastActionTimestamp.current = now;
+
+    const cardToSkip = activeCards[currentIndex];
+    if (!cardToSkip || activeCards.length <= 1) return;
+
+    setReviewHistory((prev) => [
+      ...prev,
+      {
+        index: currentIndex,
+        cardId: cardToSkip.id,
+        rated: false,
+      },
+    ]);
+
+    setCurrentIndex((prev) => (prev + 1) % activeCards.length);
+  }, [activeCards, currentIndex]);
+
+  const canGoPrevious = reviewHistory.length > 0 || currentIndex > 0;
+
+  // Keyboard navigation shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const tag = (document.activeElement?.tagName || "").toLowerCase();
+      if (
+        tag === "input" ||
+        tag === "textarea" ||
+        (document.activeElement as HTMLElement)?.isContentEditable
+      ) {
+        return;
+      }
+
+      if (e.key === "ArrowLeft" || e.key === "p" || e.key === "P") {
+        if (canGoPrevious) {
+          e.preventDefault();
+          handlePreviousCard();
+        }
+      } else if (e.key === "ArrowRight") {
+        e.preventDefault();
+        handleSkipCard();
+      } else if (e.key === "1") {
+        e.preventDefault();
+        handleReview(true);
+      } else if (e.key === "2") {
+        e.preventDefault();
+        handleReview(false);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [canGoPrevious, handlePreviousCard, handleSkipCard, handleReview]);
 
   if (loading) {
     return (
@@ -278,15 +413,41 @@ function ReviewContent() {
       ) : (
         <div className="rounded-[2.5rem] border border-slate-800 bg-slate-900/60 p-5 shadow-2xl shadow-slate-950/40 sm:p-8">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-2 text-xs uppercase tracking-[0.2em] text-slate-400">
-              <span className="h-2 w-2 rounded-full bg-cyan-400" />
-              Card {currentIndex + 1} of {activeCards.length}
-              {isShuffleActive && (
-                <span className="text-[10px] text-cyan-400 bg-cyan-500/10 px-2 py-0.5 rounded-md border border-cyan-500/20">
-                  🔀 Shuffled
-                </span>
-              )}
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2 text-xs uppercase tracking-[0.2em] text-slate-400">
+                <span className="h-2 w-2 rounded-full bg-cyan-400" />
+                Card {currentIndex + 1} of {activeCards.length}
+                {isShuffleActive && (
+                  <span className="text-[10px] text-cyan-400 bg-cyan-500/10 px-2 py-0.5 rounded-md border border-cyan-500/20">
+                    🔀 Shuffled
+                  </span>
+                )}
+              </div>
+
+              {/* Quick Stepper */}
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={handlePreviousCard}
+                  disabled={!canGoPrevious}
+                  title="Previous card (Left Arrow or P)"
+                  className="inline-flex items-center gap-1 rounded-lg border border-slate-700/80 bg-slate-950/80 px-2.5 py-1 text-xs font-semibold text-slate-300 hover:border-cyan-500/40 hover:text-white disabled:opacity-30 disabled:pointer-events-none transition cursor-pointer"
+                >
+                  <ChevronLeft size={14} />
+                  <span className="hidden xs:inline">Prev</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSkipCard}
+                  title="Skip to next card (Right Arrow)"
+                  className="inline-flex items-center gap-1 rounded-lg border border-slate-700/80 bg-slate-950/80 px-2.5 py-1 text-xs font-semibold text-slate-300 hover:border-cyan-500/40 hover:text-white transition cursor-pointer"
+                >
+                  <span className="hidden xs:inline">Next</span>
+                  <ChevronRight size={14} />
+                </button>
+              </div>
             </div>
+
             {currentCard && (
               <div className="rounded-full border border-slate-700 bg-slate-950 px-3 py-1 text-xs text-slate-300">
                 Difficulty {currentCard.difficulty}/5
@@ -327,7 +488,7 @@ Question: "${currentCard.question}" -> Answer: "${currentCard.answer}"
                         );
                       }
                     }}
-                    className="inline-flex items-center gap-1 rounded-lg border border-indigo-500/40 bg-indigo-600/20 px-2.5 py-1 text-xs font-medium text-indigo-200 hover:bg-indigo-600/30 transition cursor-pointer"
+                    className="inline-flex items-center gap-1 rounded-lg border border-indigo-500/40 bg-indigo-600/20 px-2.5 py-1 text-xs font-medium text-indigo-200 hover:bg-indigo-600/30 transition cursor-pointer active:scale-95"
                     title="Deep explanation covering formal concept, mechanics, why it matters, and analogy"
                   >
                     <span>💡 Explain Concept</span>
@@ -348,7 +509,7 @@ Question: "${currentCard.question}" -> Answer: "${currentCard.answer}"
                         );
                       }
                     }}
-                    className="inline-flex items-center gap-1 rounded-lg border border-purple-500/40 bg-purple-600/20 px-2.5 py-1 text-xs font-medium text-purple-200 hover:bg-purple-600/30 transition cursor-pointer"
+                    className="inline-flex items-center gap-1 rounded-lg border border-purple-500/40 bg-purple-600/20 px-2.5 py-1 text-xs font-medium text-purple-200 hover:bg-purple-600/30 transition cursor-pointer active:scale-95"
                   >
                     <span>🧠 Mnemonic</span>
                   </button>
@@ -356,24 +517,78 @@ Question: "${currentCard.question}" -> Answer: "${currentCard.answer}"
               </div>
             )}
 
-            <div className="flex w-full flex-col gap-3 sm:flex-row">
-              <button
-                type="button"
-                onClick={() => handleReview(true)}
-                className="flex-1 flex items-center justify-center gap-2 rounded-2xl bg-emerald-500 px-5 py-4 text-base font-bold text-slate-950 shadow-lg shadow-emerald-500/20 transition active:scale-[0.98] hover:bg-emerald-400 cursor-pointer select-none"
-              >
-                <CheckCircle2 size={19} />
-                <span>Got it (Mastered)</span>
-              </button>
+            <div className="flex w-full flex-col gap-3">
+              <div className="flex w-full flex-col gap-3 sm:flex-row">
+                <button
+                  type="button"
+                  onClick={() => handleReview(true)}
+                  className="flex-1 flex items-center justify-center gap-2 rounded-2xl bg-emerald-500 px-5 py-4 text-base font-bold text-slate-950 shadow-lg shadow-emerald-500/20 transition active:scale-[0.98] hover:bg-emerald-400 cursor-pointer select-none"
+                >
+                  <CheckCircle2 size={19} />
+                  <span>Got it (Mastered)</span>
+                  <span className="hidden md:inline-block ml-1 rounded bg-black/20 px-1.5 py-0.5 text-[10px] font-mono text-slate-950">
+                    [1]
+                  </span>
+                </button>
 
-              <button
-                type="button"
-                onClick={() => handleReview(false)}
-                className="flex-1 flex items-center justify-center gap-2 rounded-2xl border border-rose-500/40 bg-rose-500/10 px-5 py-4 text-base font-bold text-rose-300 transition active:scale-[0.98] hover:bg-rose-500/20 cursor-pointer select-none"
-              >
-                <RotateCcw size={18} />
-                <span>Still Learning (Review Again)</span>
-              </button>
+                <button
+                  type="button"
+                  onClick={() => handleReview(false)}
+                  className="flex-1 flex items-center justify-center gap-2 rounded-2xl border border-rose-500/40 bg-rose-500/10 px-5 py-4 text-base font-bold text-rose-300 transition active:scale-[0.98] hover:bg-rose-500/20 cursor-pointer select-none"
+                >
+                  <RotateCcw size={18} />
+                  <span>Still Learning (Review Again)</span>
+                  <span className="hidden md:inline-block ml-1 rounded bg-rose-500/20 px-1.5 py-0.5 text-[10px] font-mono text-rose-300">
+                    [2]
+                  </span>
+                </button>
+              </div>
+
+              {/* Secondary Navigation Row: Backtrack to previous card & Skip */}
+              <div className="flex w-full items-center justify-between gap-3 pt-1 text-xs text-slate-400">
+                <button
+                  type="button"
+                  onClick={handlePreviousCard}
+                  disabled={!canGoPrevious}
+                  title="Return to previous card (Left Arrow or P)"
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-slate-800 bg-slate-900/90 px-3.5 py-2.5 font-medium text-slate-200 transition hover:border-slate-700 hover:bg-slate-800 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer shadow-sm"
+                >
+                  <ChevronLeft size={15} />
+                  <span>Previous Card</span>
+                  <kbd className="hidden sm:inline-block rounded bg-slate-800 px-1.5 py-0.5 text-[10px] text-slate-400 border border-slate-700">
+                    ←
+                  </kbd>
+                </button>
+
+                <div className="hidden sm:flex items-center gap-2 text-[11px] text-slate-500">
+                  <span>Hotkeys:</span>
+                  <span className="rounded bg-slate-950 px-1.5 py-0.5 text-[10px] text-slate-400 border border-slate-800">
+                    ← Prev
+                  </span>
+                  <span className="rounded bg-slate-950 px-1.5 py-0.5 text-[10px] text-emerald-400/90 border border-slate-800">
+                    1 Got it
+                  </span>
+                  <span className="rounded bg-slate-950 px-1.5 py-0.5 text-[10px] text-rose-400/90 border border-slate-800">
+                    2 Review
+                  </span>
+                  <span className="rounded bg-slate-950 px-1.5 py-0.5 text-[10px] text-slate-400 border border-slate-800">
+                    → Skip
+                  </span>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleSkipCard}
+                  title="Skip card without recording a rating (Right Arrow)"
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-slate-800 bg-slate-900/90 px-3.5 py-2.5 font-medium text-slate-200 transition hover:border-slate-700 hover:bg-slate-800 cursor-pointer shadow-sm"
+                >
+                  <span>Skip Card</span>
+                  <ChevronRight size={15} />
+                  <kbd className="hidden sm:inline-block rounded bg-slate-800 px-1.5 py-0.5 text-[10px] text-slate-400 border border-slate-700">
+                    →
+                  </kbd>
+                </button>
+              </div>
             </div>
           </div>
         </div>

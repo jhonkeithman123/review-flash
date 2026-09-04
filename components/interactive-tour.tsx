@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import confetti from "canvas-confetti";
 import {
   ArrowLeft,
@@ -131,6 +131,9 @@ const TOUR_STEPS: TourStep[] = [
 
 export function InteractiveTour() {
   const [isOpen, setIsOpen] = useState(false);
+  const [isRendered, setIsRendered] = useState(false);
+  const [isVisible, setIsVisible] = useState(false);
+  const [origin, setOrigin] = useState<{ x: number; y: number } | null>(null);
   const [currentStep, setCurrentStep] = useState(0);
 
   // Interactive card demo state
@@ -145,6 +148,7 @@ export function InteractiveTour() {
       if (!hasCompleted) {
         // Automatically open for first-time visitors after short entrance delay
         const timer = setTimeout(() => {
+          setOrigin(null);
           setIsOpen(true);
         }, 800);
         return () => clearTimeout(timer);
@@ -154,7 +158,17 @@ export function InteractiveTour() {
 
   // Global event listener to trigger tour anytime from navbar or buttons
   useEffect(() => {
-    const handleOpenTour = () => {
+    const handleOpenTour = (e: Event) => {
+      const customEvent = e as CustomEvent<{ x?: number; y?: number }>;
+      if (
+        customEvent.detail &&
+        typeof customEvent.detail.x === "number" &&
+        typeof customEvent.detail.y === "number"
+      ) {
+        setOrigin({ x: customEvent.detail.x, y: customEvent.detail.y });
+      } else {
+        setOrigin(null);
+      }
       setCurrentStep(0);
       setIsDemoCardFlipped(false);
       setIsOpen(true);
@@ -163,6 +177,25 @@ export function InteractiveTour() {
     window.addEventListener("open-reviewflash-tour", handleOpenTour);
     return () => window.removeEventListener("open-reviewflash-tour", handleOpenTour);
   }, []);
+
+  // Synchronize enter & exit animation with double-rAF and timeout
+  useEffect(() => {
+    if (isOpen) {
+      setIsRendered(true);
+      const raf = requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          setIsVisible(true);
+        });
+      });
+      return () => cancelAnimationFrame(raf);
+    } else {
+      setIsVisible(false);
+      const timer = setTimeout(() => {
+        setIsRendered(false);
+      }, 340);
+      return () => clearTimeout(timer);
+    }
+  }, [isOpen]);
 
   // Keyboard navigation
   useEffect(() => {
@@ -225,22 +258,108 @@ export function InteractiveTour() {
     }
   };
 
-  if (!isOpen) return null;
+  const innerRef = useRef<HTMLDivElement>(null);
+  const [cardHeight, setCardHeight] = useState<number | undefined>(undefined);
+
+  // Observe and smoothly adapt the floating menu height whenever content or steps change
+  useEffect(() => {
+    if (!isRendered) return;
+
+    const measureAndSetHeight = () => {
+      if (innerRef.current) {
+        const measured = innerRef.current.offsetHeight;
+        if (measured > 0) {
+          const maxHeight = typeof window !== "undefined" ? window.innerHeight * 0.9 : 800;
+          setCardHeight(Math.min(measured, maxHeight));
+        }
+      }
+    };
+
+    measureAndSetHeight();
+
+    const raf = requestAnimationFrame(() => {
+      measureAndSetHeight();
+    });
+
+    let ro: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== "undefined" && innerRef.current) {
+      ro = new ResizeObserver(() => {
+        measureAndSetHeight();
+      });
+      ro.observe(innerRef.current);
+    }
+
+    const handleResize = () => measureAndSetHeight();
+    window.addEventListener("resize", handleResize);
+
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener("resize", handleResize);
+      if (ro) ro.disconnect();
+    };
+  }, [currentStep, isRendered, isDemoCardFlipped]);
+
+  if (!isRendered) return null;
+
+  // Calculate dynamic transform & animated height to spring-grow out of the activating button and smoothly resize between steps
+  const getCardStyle = () => {
+    if (typeof window === "undefined") return {};
+
+    const centerX = window.innerWidth / 2;
+    const centerY = window.innerHeight / 2;
+
+    const targetX = origin ? origin.x : centerX;
+    const targetY = origin ? origin.y : centerY - 30;
+
+    const deltaX = targetX - centerX;
+    const deltaY = targetY - centerY;
+
+    if (isVisible) {
+      return {
+        transform: "translate3d(0px, 0px, 0px) scale(1)",
+        opacity: 1,
+        height: cardHeight ? `${cardHeight}px` : "auto",
+        transition:
+          "height 380ms cubic-bezier(0.16, 1, 0.3, 1), transform 360ms cubic-bezier(0.34, 1.3, 0.64, 1), opacity 250ms ease-out",
+      };
+    } else {
+      return {
+        transform: `translate3d(${deltaX}px, ${deltaY}px, 0px) scale(0.04)`,
+        opacity: 0,
+        height: cardHeight ? `${cardHeight}px` : "auto",
+        pointerEvents: "none" as const,
+        transition: "transform 300ms cubic-bezier(0.4, 0, 0.2, 1), opacity 220ms ease-in",
+      };
+    }
+  };
 
   const step = TOUR_STEPS[currentStep];
   const StepIcon = step.icon;
   const progressPercent = ((currentStep + 1) / TOUR_STEPS.length) * 100;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-slate-950/85 backdrop-blur-md animate-in fade-in duration-200">
+    <div
+      onClick={handleCloseTour}
+      className={`fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 transition-all duration-300 ease-out ${
+        isVisible
+          ? "bg-slate-950/85 backdrop-blur-md opacity-100"
+          : "bg-slate-950/0 backdrop-blur-none opacity-0 pointer-events-none"
+      }`}
+    >
       {/* Background ambient lighting */}
       <div className="pointer-events-none absolute h-[400px] w-[500px] rounded-full bg-cyan-500/10 blur-[100px]" />
       <div className="pointer-events-none absolute h-[300px] w-[400px] rounded-full bg-emerald-500/10 blur-[100px]" />
 
       <div
-        className="relative w-full max-w-2xl rounded-3xl border border-slate-800 bg-slate-900/95 p-6 sm:p-8 shadow-2xl shadow-slate-950 backdrop-blur-2xl animate-in zoom-in-95 duration-150 overflow-hidden flex flex-col justify-between max-h-[90vh]"
         onClick={(e) => e.stopPropagation()}
+        style={getCardStyle()}
+        data-tour-modal="true"
+        className="relative w-full max-w-2xl rounded-3xl border border-slate-800 bg-slate-900/95 shadow-2xl shadow-slate-950 backdrop-blur-2xl overflow-hidden origin-center max-h-[90vh]"
       >
+        <div
+          ref={innerRef}
+          className="w-full flex flex-col justify-between p-6 sm:p-8"
+        >
         {/* Top Header Row */}
         <div className="flex items-center justify-between gap-3 border-b border-slate-800/80 pb-4">
           <div className="flex items-center gap-2.5">
@@ -280,7 +399,10 @@ export function InteractiveTour() {
         </div>
 
         {/* Step Content Container */}
-        <div className="my-5 overflow-y-auto pr-1 space-y-4 max-h-[55vh]">
+        <div
+          key={currentStep}
+          className="my-5 overflow-y-auto pr-1 space-y-4 max-h-[55vh] animate-in fade-in duration-300"
+        >
           <div>
             <h2 className="text-xl sm:text-2xl font-bold text-white tracking-tight">
               {step.title}
@@ -520,5 +642,6 @@ export function InteractiveTour() {
         </div>
       </div>
     </div>
+  </div>
   );
 }

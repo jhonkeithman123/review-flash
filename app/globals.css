@@ -73,3 +73,135 @@ button, a, input, select, textarea, [role="button"] {
   background: rgba(148, 163, 184, 0.6);
 }
 
+/* AI Drawer Blossom / Grow Animation from Trigger Button */
+@keyframes aiDrawerGrowIn {
+  0% {
+    transform: scale(0.06) translate(24px, 24px);
+    opacity: 0;
+    transform-origin: bottom right;
+  }
+  65% {
+    transform: scale(1.02) translate(0, 0);
+    opacity: 1;
+    transform-origin: bottom right;
+  }
+  100% {
+    transform: scale(1) translate(0, 0);
+    opacity: 1;
+    transform-origin: bottom right;
+  }
+}
+
+@keyframes aiDrawerGrowOut {
+  0% {
+    transform: scale(1) translate(0, 0);
+    opacity: 1;
+    transform-origin: bottom right;
+  }
+  100% {
+    transform: scale(0.06) translate(24px, 24px);
+    opacity: 0;
+    transform-origin: bottom right;
+  }
+}
+
+.animate-ai-drawer-in {
+  animation: aiDrawerGrowIn 340ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  transform-origin: bottom right;
+  will-change: transform, opacity;
+}
+
+.animate-ai-drawer-out {
+  animation: aiDrawerGrowOut 260ms cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  transform-origin: bottom right;
+  will-change: transform, opacity;
+}
+
+/* Music Lounge "Dragged to Middle then Grew Up" Animation */
+@keyframes musicLoungeEnter {
+  0% {
+    transform: translate(calc(-50vw + 160px), calc(50vh - 70px)) scale(0.32);
+    opacity: 0.15;
+  }
+  42% {
+    transform: translate(0, 36px) scale(0.48);
+    opacity: 0.95;
+  }
+  80% {
+    transform: translate(0, -6px) scale(1.02);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(0, 0) scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes musicLoungeExit {
+  0% {
+    transform: translate(0, 0) scale(1);
+    opacity: 1;
+  }
+  38% {
+    transform: translate(0, 36px) scale(0.48);
+    opacity: 0.9;
+  }
+  100% {
+    transform: translate(calc(-50vw + 160px), calc(50vh - 70px)) scale(0.32);
+    opacity: 0;
+  }
+}
+
+@keyframes musicLoungeEnterMobile {
+  0% {
+    transform: translate(calc(-50vw + 120px), calc(50vh - 60px)) scale(0.3);
+    opacity: 0.15;
+  }
+  42% {
+    transform: translate(0, 24px) scale(0.5);
+    opacity: 0.95;
+  }
+  80% {
+    transform: translate(0, -4px) scale(1.02);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(0, 0) scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes musicLoungeExitMobile {
+  0% {
+    transform: translate(0, 0) scale(1);
+    opacity: 1;
+  }
+  38% {
+    transform: translate(0, 24px) scale(0.5);
+    opacity: 0.9;
+  }
+  100% {
+    transform: translate(calc(-50vw + 120px), calc(50vh - 60px)) scale(0.3);
+    opacity: 0;
+  }
+}
+
+.animate-music-lounge-in {
+  animation: musicLoungeEnter 460ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  will-change: transform, opacity;
+}
+
+.animate-music-lounge-out {
+  animation: musicLoungeExit 380ms cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  will-change: transform, opacity;
+}
+
+@media (max-width: 640px) {
+  .animate-music-lounge-in {
+    animation-name: musicLoungeEnterMobile;
+  }
+  .animate-music-lounge-out {
+    animation-name: musicLoungeExitMobile;
+  }
+}
+

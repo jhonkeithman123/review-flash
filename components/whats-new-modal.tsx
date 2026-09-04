@@ -27,8 +27,9 @@ import {
   X,
   Zap,
 } from "lucide-react";
+import { APP_VERSION } from "@/lib/version";
 
-export const CURRENT_APP_VERSION = "v2.0.0";
+export const CURRENT_APP_VERSION = APP_VERSION;
 const STORAGE_KEY = "reviewflash_last_seen_version";
 
 interface FeatureHighlight {
@@ -43,45 +44,48 @@ interface FeatureHighlight {
 
 const HIGHLIGHTS: FeatureHighlight[] = [
   {
-    icon: Headphones,
-    title: "Study Music Lounge with YouTube Audio Engine",
-    badge: "Music Update",
-    badgeColor: "bg-emerald-500/20 text-emerald-300 border-emerald-500/40",
-    desc: "Listen to relaxing Casual Game Cozy BGM, Lo-Fi study beats, or paste full YouTube / YouTube Music playlist links! Features time scrubbers, auto-play unlock, and background persistence across pages.",
-    href: "/review",
-    actionText: "Listen Now",
-  },
-  {
     icon: Sparkles,
-    title: "Smart Auto-Failover & Auto-Switching",
-    badge: "Self-Healing Audio",
+    title: "Origin-Anchored Spring Growth Animations",
+    badge: "Motion Design",
     badgeColor: "bg-cyan-500/20 text-cyan-300 border-cyan-500/40",
-    desc: "If an audio stream stalls or encounters copyright embedding restrictions, the engine automatically switches to the next available working study playlist so your focus session never stops.",
-    href: "/test",
-    actionText: "Try in Test",
+    desc: "Interactive Tour and What's New modals now sprout and blossom directly out of the exact activator button clicked, and smoothly reverse-shrink back into it on close.",
+    href: "/decks",
+    actionText: "Try It",
   },
   {
-    icon: Shuffle,
-    title: "Non-Resetting Persistent Quiz & Review Shuffle",
-    badge: "Smart Shuffle",
-    badgeColor: "bg-indigo-500/20 text-indigo-300 border-indigo-500/40",
-    desc: "Toggling question or card shuffle no longer resets you to Question 1! You stay on the exact card you are reviewing, and your shuffle preference is remembered in memory.",
-    href: "/test",
-    actionText: "Test Quiz",
+    icon: Zap,
+    title: "Adaptive Height Growth & Directional Tab Swiping",
+    badge: "Fluid UX",
+    badgeColor: "bg-emerald-500/20 text-emerald-300 border-emerald-500/40",
+    desc: "Study Music Lounge and Interactive Tour now fluidly adapt their height with smooth cubic-bezier transitions when navigating steps or tabs. Tab switching slides left or right based on navigation direction.",
+    href: "/review",
+    actionText: "Open Lounge",
   },
   {
     icon: Rocket,
-    title: "Continue with Facebook & Mobile WebViews",
-    badge: "Social & WebViews",
-    badgeColor: "bg-blue-500/20 text-blue-300 border-blue-500/40",
-    desc: "Sign in with Facebook in 1 click! Plus full safe-area insets, 100dvh viewport support, and instant touch responses for seamless in-app browsing in Facebook and Messenger.",
-    href: "/decks",
-    actionText: "View Decks",
+    title: "Gliding Segmented Navbar Indicator",
+    badge: "Navigation",
+    badgeColor: "bg-indigo-500/20 text-indigo-300 border-indigo-500/40",
+    desc: "Desktop navigation bar now features a sliding active indicator pill that glides across tabs (Decks, Review, Test, Create) with directional entering transitions and morphing mobile hamburger icons.",
+    href: "/test",
+    actionText: "Try Nav",
+  },
+  {
+    icon: Headphones,
+    title: "Study Music Lounge with YouTube Audio Engine",
+    badge: "Music Update",
+    badgeColor: "bg-teal-500/20 text-teal-300 border-teal-500/40",
+    desc: "Listen to relaxing Casual Game Cozy BGM, Lo-Fi study beats, or paste full YouTube / YouTube Music playlist links with smart auto-failover, scrubbers, and persistent background playback.",
+    href: "/review",
+    actionText: "Listen Now",
   },
 ];
 
 export function WhatsNewModal() {
   const [isOpen, setIsOpen] = useState(false);
+  const [isRendered, setIsRendered] = useState(false);
+  const [isVisible, setIsVisible] = useState(false);
+  const [origin, setOrigin] = useState<{ x: number; y: number } | null>(null);
   const [dontShowAgain, setDontShowAgain] = useState(true);
 
   // Check version on mount
@@ -95,6 +99,7 @@ export function WhatsNewModal() {
         // Only open if the first-time tour is not actively open
         const isTourActive = document.querySelector("[data-tour-modal='true']");
         if (!isTourActive) {
+          setOrigin(null);
           setIsOpen(true);
         }
       }, 1200);
@@ -104,10 +109,53 @@ export function WhatsNewModal() {
 
   // Global event listener to open What's New manually
   useEffect(() => {
-    const handleOpen = () => setIsOpen(true);
+    const handleOpen = (e: Event) => {
+      const customEvent = e as CustomEvent<{ x?: number; y?: number }>;
+      if (
+        customEvent.detail &&
+        typeof customEvent.detail.x === "number" &&
+        typeof customEvent.detail.y === "number"
+      ) {
+        setOrigin({ x: customEvent.detail.x, y: customEvent.detail.y });
+      } else {
+        setOrigin(null);
+      }
+      setIsOpen(true);
+    };
     window.addEventListener("open-whats-new", handleOpen);
     return () => window.removeEventListener("open-whats-new", handleOpen);
   }, []);
+
+  // Synchronize enter & exit animation with double-rAF and timeout
+  useEffect(() => {
+    if (isOpen) {
+      setIsRendered(true);
+      const raf = requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          setIsVisible(true);
+        });
+      });
+      return () => cancelAnimationFrame(raf);
+    } else {
+      setIsVisible(false);
+      const timer = setTimeout(() => {
+        setIsRendered(false);
+      }, 340);
+      return () => clearTimeout(timer);
+    }
+  }, [isOpen]);
+
+  // Escape key handler
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        handleClose();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen, dontShowAgain]);
 
   const handleClose = () => {
     if (dontShowAgain && typeof window !== "undefined") {
@@ -116,19 +164,58 @@ export function WhatsNewModal() {
     setIsOpen(false);
   };
 
-  const handleOpenTour = () => {
+  const handleOpenTour = (e?: React.MouseEvent) => {
     handleClose();
     if (typeof window !== "undefined") {
-      window.dispatchEvent(new CustomEvent("open-reviewflash-tour"));
+      const detail = e ? { x: e.clientX, y: e.clientY } : undefined;
+      window.dispatchEvent(new CustomEvent("open-reviewflash-tour", { detail }));
     }
   };
 
-  if (!isOpen) return null;
+  if (!isRendered) return null;
+
+  // Calculate dynamic transform to spring-grow out of the activating button
+  const getTransformStyle = () => {
+    if (typeof window === "undefined") return {};
+
+    const centerX = window.innerWidth / 2;
+    const centerY = window.innerHeight / 2;
+
+    const targetX = origin ? origin.x : centerX;
+    const targetY = origin ? origin.y : centerY - 30;
+
+    const deltaX = targetX - centerX;
+    const deltaY = targetY - centerY;
+
+    if (isVisible) {
+      return {
+        transform: "translate3d(0px, 0px, 0px) scale(1)",
+        opacity: 1,
+        transition: "transform 360ms cubic-bezier(0.34, 1.3, 0.64, 1), opacity 250ms ease-out",
+      };
+    } else {
+      return {
+        transform: `translate3d(${deltaX}px, ${deltaY}px, 0px) scale(0.04)`,
+        opacity: 0,
+        pointerEvents: "none" as const,
+        transition: "transform 300ms cubic-bezier(0.4, 0, 0.2, 1), opacity 220ms ease-in",
+      };
+    }
+  };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-in fade-in duration-200">
+    <div
+      onClick={handleClose}
+      className={`fixed inset-0 z-50 flex items-center justify-center p-4 transition-all duration-300 ease-out ${
+        isVisible
+          ? "bg-slate-950/80 backdrop-blur-md opacity-100"
+          : "bg-slate-950/0 backdrop-blur-none opacity-0 pointer-events-none"
+      }`}
+    >
       <div
-        className="relative w-full max-w-2xl rounded-3xl border border-cyan-500/40 bg-slate-900/95 shadow-2xl shadow-cyan-500/10 overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-200"
+        onClick={(e) => e.stopPropagation()}
+        style={getTransformStyle()}
+        className="relative w-full max-w-2xl rounded-3xl border border-cyan-500/40 bg-slate-900/95 shadow-2xl shadow-cyan-500/10 overflow-hidden flex flex-col max-h-[90vh] origin-center"
         data-whatsnew-modal="true"
       >
         {/* Background Glowing Ambient Accents */}
@@ -239,7 +326,7 @@ export function WhatsNewModal() {
           <div className="flex flex-wrap items-center gap-2.5 w-full sm:w-auto justify-end">
             <button
               type="button"
-              onClick={handleOpenTour}
+              onClick={(e) => handleOpenTour(e)}
               className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 rounded-xl border border-cyan-500/40 bg-cyan-500/10 px-3.5 py-2 text-xs font-bold text-cyan-300 hover:bg-cyan-500/20 transition cursor-pointer"
             >
               <GraduationCap size={14} />

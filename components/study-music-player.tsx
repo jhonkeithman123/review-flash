@@ -85,6 +85,8 @@ export function StudyMusicPlayer() {
   const [isSeeking, setIsSeeking] = useState(false);
 
   const [isExpanded, setIsExpanded] = useState(false);
+  const [isLoungeRendered, setIsLoungeRendered] = useState(false);
+  const [isLoungeVisible, setIsLoungeVisible] = useState(false);
   const [isMiniCollapsed, setIsMiniCollapsed] = useState(false);
   const [activeTab, setActiveTab] = useState<"playlists" | "queue" | "custom">("playlists");
   const [customInput, setCustomInput] = useState("");
@@ -92,6 +94,84 @@ export function StudyMusicPlayer() {
   const [customArtist, setCustomArtist] = useState("");
   const [statusNotice, setStatusNotice] = useState<{ text: string; type: "info" | "success" | "warn" } | null>(null);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const allPlaylists = [...CURATED_PLAYLISTS, ...userCustomPlaylists];
+
+  const loungeInnerRef = useRef<HTMLDivElement>(null);
+  const [loungeHeight, setLoungeHeight] = useState<number | undefined>(undefined);
+  const TAB_ORDER: Array<"playlists" | "queue" | "custom"> = ["playlists", "queue", "custom"];
+  const [tabDirection, setTabDirection] = useState<"left" | "right">("right");
+
+  const handleSwitchTab = (newTab: "playlists" | "queue" | "custom") => {
+    if (newTab === activeTab) return;
+    const oldIdx = TAB_ORDER.indexOf(activeTab);
+    const newIdx = TAB_ORDER.indexOf(newTab);
+    // When moving to higher tab index (e.g. Playlists -> Queue), direction is "left" (swipes left, enters from right)
+    // When moving to lower tab index (e.g. Queue -> Playlists), direction is "right" (swipes right, enters from left)
+    setTabDirection(newIdx > oldIdx ? "left" : "right");
+    setActiveTab(newTab);
+  };
+
+  // Measure and smoothly animate Study Music Lounge height adaptation whenever tabs, queue, or content change
+  useEffect(() => {
+    if (!isLoungeRendered) return;
+
+    const measureLoungeHeight = () => {
+      if (loungeInnerRef.current) {
+        const measured = loungeInnerRef.current.offsetHeight;
+        if (measured > 0) {
+          const maxHeight = typeof window !== "undefined" ? window.innerHeight * 0.9 : 800;
+          setLoungeHeight(Math.min(measured, maxHeight));
+        }
+      }
+    };
+
+    measureLoungeHeight();
+
+    const raf = requestAnimationFrame(() => {
+      measureLoungeHeight();
+    });
+
+    let ro: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== "undefined" && loungeInnerRef.current) {
+      ro = new ResizeObserver(() => {
+        measureLoungeHeight();
+      });
+      ro.observe(loungeInnerRef.current);
+    }
+
+    const handleResize = () => measureLoungeHeight();
+    window.addEventListener("resize", handleResize);
+
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener("resize", handleResize);
+      if (ro) ro.disconnect();
+    };
+  }, [activeTab, isLoungeRendered, queue.length, allPlaylists.length, statusNotice]);
+
+  // Animation state for smooth Study Music Lounge modal open and close
+  useEffect(() => {
+    if (isExpanded) {
+      setIsLoungeRendered(true);
+      const timer = setTimeout(() => setIsLoungeVisible(true), 20);
+      return () => clearTimeout(timer);
+    } else {
+      setIsLoungeVisible(false);
+      const timer = setTimeout(() => setIsLoungeRendered(false), 380);
+      return () => clearTimeout(timer);
+    }
+  }, [isExpanded]);
+
+  // Escape key handler to close music lounge smoothly
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && isExpanded) {
+        setIsExpanded(false);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isExpanded]);
 
   const playerRef = useRef<any>(null);
   const pendingTrackRef = useRef<TrackItem | null>(null);
@@ -122,7 +202,6 @@ export function StudyMusicPlayer() {
   }, [isPlaying]);
 
   const currentTrack = queue[currentTrackIndex] || queue[0];
-  const allPlaylists = [...CURATED_PLAYLISTS, ...userCustomPlaylists];
 
   // 1. Load saved settings from localStorage
   useEffect(() => {
@@ -778,13 +857,20 @@ export function StudyMusicPlayer() {
       </div>
 
       {/* 2. COMPACT FLOATING MINI PLAYER (Bottom-Left) */}
-      <div className="fixed bottom-4 left-4 z-40 max-w-xs sm:max-w-sm select-none animate-in fade-in slide-in-from-bottom-3 duration-200">
-        {isMiniCollapsed ? (
+      <div className="fixed bottom-4 left-4 z-40 max-w-[calc(100vw-2rem)] sm:max-w-sm select-none">
+        {/* Collapsed Pill Button */}
+        <div
+          className={`transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+            isMiniCollapsed
+              ? "opacity-100 scale-100 translate-y-0 pointer-events-auto"
+              : "opacity-0 scale-90 translate-y-3 pointer-events-none absolute bottom-0 left-0"
+          }`}
+        >
           <button
             type="button"
             onClick={() => setIsMiniCollapsed(false)}
             title="Expand Study Audio Player"
-            className="flex items-center gap-2 rounded-full border border-emerald-500/50 bg-slate-900/90 px-3.5 py-2 text-xs font-bold text-emerald-300 shadow-xl backdrop-blur-xl hover:bg-slate-900 hover:border-emerald-400 transition cursor-pointer"
+            className="flex items-center gap-2 rounded-full border border-emerald-500/50 bg-slate-900/90 px-3.5 py-2 text-xs font-bold text-emerald-300 shadow-xl backdrop-blur-xl hover:bg-slate-900 hover:border-emerald-400 hover:scale-105 active:scale-95 transition cursor-pointer"
           >
             <div className="relative flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500/20">
               <Headphones size={13} className="text-emerald-400" />
@@ -798,7 +884,16 @@ export function StudyMusicPlayer() {
               </span>
             )}
           </button>
-        ) : (
+        </div>
+
+        {/* Expanded Mini Player Card */}
+        <div
+          className={`transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+            !isMiniCollapsed
+              ? "opacity-100 scale-100 translate-y-0 pointer-events-auto"
+              : "opacity-0 scale-90 translate-y-3 pointer-events-none absolute bottom-0 left-0"
+          }`}
+        >
           <div className="flex flex-col gap-1.5 rounded-2xl border border-slate-800/90 bg-slate-950/95 p-2 sm:p-2.5 shadow-2xl shadow-slate-950/60 backdrop-blur-2xl ring-1 ring-slate-800">
             <div className="flex items-center gap-2.5">
               {/* Play/Pause Button */}
@@ -894,13 +989,33 @@ export function StudyMusicPlayer() {
               </div>
             )}
           </div>
-        )}
+        </div>
       </div>
 
       {/* 3. FULL STUDY MUSIC LOUNGE MODAL / DRAWER */}
-      {isExpanded && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4 animate-in fade-in duration-150">
-          <div className="relative flex flex-col w-full max-w-2xl max-h-[90dvh] rounded-3xl border border-slate-800 bg-slate-900/95 shadow-2xl overflow-hidden">
+      {isLoungeRendered && (
+        <div
+          className={`fixed inset-0 z-50 flex items-center justify-center p-4 transition-all duration-350 ease-out ${
+            isLoungeVisible
+              ? "bg-slate-950/80 backdrop-blur-md opacity-100"
+              : "bg-slate-950/0 backdrop-blur-none opacity-0 pointer-events-none"
+          }`}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setIsExpanded(false);
+          }}
+        >
+          <div
+            style={{
+              height: loungeHeight ? `${loungeHeight}px` : "auto",
+              transition: "height 380ms cubic-bezier(0.16, 1, 0.3, 1)",
+            }}
+            className={`relative flex flex-col w-full max-w-2xl max-h-[90dvh] rounded-3xl border border-slate-800 bg-slate-900/95 shadow-2xl overflow-hidden ${
+              isLoungeVisible
+                ? "animate-music-lounge-in pointer-events-auto"
+                : "animate-music-lounge-out pointer-events-none"
+            }`}
+          >
+            <div ref={loungeInnerRef} className="w-full flex flex-col">
             {/* Header */}
             <div className="flex items-center justify-between border-b border-slate-800 px-5 py-3.5 bg-slate-950/80">
               <div className="flex items-center gap-2.5">
@@ -1091,11 +1206,11 @@ export function StudyMusicPlayer() {
               <div className="flex items-center gap-1.5 flex-wrap">
                 <button
                   type="button"
-                  onClick={() => setActiveTab("playlists")}
-                  className={`flex items-center gap-1.5 rounded-xl px-3 py-1.5 font-semibold transition cursor-pointer ${
+                  onClick={() => handleSwitchTab("playlists")}
+                  className={`flex items-center gap-1.5 rounded-xl px-3 py-1.5 font-semibold transition-all duration-200 active:scale-95 cursor-pointer ${
                     activeTab === "playlists"
-                      ? "bg-emerald-500 text-slate-950 font-bold"
-                      : "text-slate-400 hover:text-white"
+                      ? "bg-emerald-500 text-slate-950 font-bold shadow-md shadow-emerald-500/20 scale-105"
+                      : "text-slate-400 hover:text-white hover:bg-slate-900/60"
                   }`}
                 >
                   <Disc size={14} />
@@ -1104,11 +1219,11 @@ export function StudyMusicPlayer() {
 
                 <button
                   type="button"
-                  onClick={() => setActiveTab("queue")}
-                  className={`flex items-center gap-1.5 rounded-xl px-3 py-1.5 font-semibold transition cursor-pointer ${
+                  onClick={() => handleSwitchTab("queue")}
+                  className={`flex items-center gap-1.5 rounded-xl px-3 py-1.5 font-semibold transition-all duration-200 active:scale-95 cursor-pointer ${
                     activeTab === "queue"
-                      ? "bg-emerald-500 text-slate-950 font-bold"
-                      : "text-slate-400 hover:text-white"
+                      ? "bg-emerald-500 text-slate-950 font-bold shadow-md shadow-emerald-500/20 scale-105"
+                      : "text-slate-400 hover:text-white hover:bg-slate-900/60"
                   }`}
                 >
                   <ListOrdered size={14} />
@@ -1117,11 +1232,11 @@ export function StudyMusicPlayer() {
 
                 <button
                   type="button"
-                  onClick={() => setActiveTab("custom")}
-                  className={`flex items-center gap-1.5 rounded-xl px-3 py-1.5 font-semibold transition cursor-pointer ${
+                  onClick={() => handleSwitchTab("custom")}
+                  className={`flex items-center gap-1.5 rounded-xl px-3 py-1.5 font-semibold transition-all duration-200 active:scale-95 cursor-pointer ${
                     activeTab === "custom"
-                      ? "bg-emerald-500 text-slate-950 font-bold"
-                      : "text-slate-400 hover:text-white"
+                      ? "bg-emerald-500 text-slate-950 font-bold shadow-md shadow-emerald-500/20 scale-105"
+                      : "text-slate-400 hover:text-white hover:bg-slate-900/60"
                   }`}
                 >
                   <Plus size={14} />
@@ -1168,9 +1283,18 @@ export function StudyMusicPlayer() {
               </div>
             </div>
 
-            {/* Tab 1: Playlists Grid (Curated + Custom User Playlists) */}
-            {activeTab === "playlists" && (
-              <div className="flex-1 overflow-y-auto p-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {/* Directional Swiping Tab Panels Container */}
+            <div
+              key={activeTab}
+              className={`w-full overflow-hidden ${
+                tabDirection === "left"
+                  ? "animate-in slide-in-from-right-8 fade-in duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]"
+                  : "animate-in slide-in-from-left-8 fade-in duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]"
+              }`}
+            >
+              {/* Tab 1: Playlists Grid (Curated + Custom User Playlists) */}
+              {activeTab === "playlists" && (
+                <div className="max-h-[46vh] overflow-y-auto p-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {allPlaylists.map((playlist) => {
                   const isSelected = activePlaylist.id === playlist.id;
 
@@ -1233,7 +1357,7 @@ export function StudyMusicPlayer() {
 
             {/* Tab 2: Queue Management */}
             {activeTab === "queue" && (
-              <div className="flex-1 overflow-y-auto p-4 space-y-2">
+              <div className="max-h-[46vh] overflow-y-auto p-4 space-y-2">
                 <div className="flex items-center justify-between pb-1 text-xs text-slate-400">
                   <span>Playing from: <strong className="text-white">{activePlaylist.title}</strong></span>
                   <div className="flex items-center gap-2">
@@ -1319,7 +1443,7 @@ export function StudyMusicPlayer() {
 
             {/* Tab 3: Add Custom Link / Playlist / List of links */}
             {activeTab === "custom" && (
-              <div className="flex-1 overflow-y-auto p-5 space-y-4">
+              <div className="max-h-[46vh] overflow-y-auto p-5 space-y-4">
                 <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4 space-y-2 text-xs text-slate-300">
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-2 font-bold text-white">
@@ -1405,8 +1529,10 @@ export function StudyMusicPlayer() {
                 </form>
               </div>
             )}
+            </div>
           </div>
         </div>
+      </div>
       )}
     </>
   );

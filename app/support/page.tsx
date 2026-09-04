@@ -20,6 +20,7 @@ import {
   Sparkles,
   Terminal,
 } from "lucide-react";
+import { APP_VERSION, APP_CODENAME } from "@/lib/version";
 
 export default function SupportPage() {
   const supportEmail = "keithvirgenes17@gmail.com";
@@ -39,7 +40,7 @@ export default function SupportPage() {
     if (typeof window === "undefined") return "";
     return `
 --- System Diagnostics ---
-App Version: v2.0.0 (The Music & Social Horizon)
+App Version: ${APP_VERSION} (${APP_CODENAME})
 Browser: ${navigator.userAgent}
 Language: ${navigator.language}
 Screen Resolution: ${window.screen.width}x${window.screen.height}
@@ -228,7 +229,7 @@ Timestamp: ${new Date().toISOString()}
                 />
                 <span className="font-semibold">Include anonymous device &amp; browser diagnostics</span>
               </label>
-              <span className="text-[10px] text-slate-500 hidden sm:inline">v2.0.0</span>
+              <span className="text-[10px] text-slate-500 hidden sm:inline">{APP_VERSION}</span>
             </div>
 
             {/* Submit & Copy Actions */}

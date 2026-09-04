@@ -14,6 +14,7 @@ import {
   Shield,
   Trash2,
 } from "lucide-react";
+import { APP_VERSION } from "@/lib/version";
 
 export function Footer() {
   return (
@@ -27,7 +28,7 @@ export function Footer() {
             </div>
             <span className="font-bold text-white text-sm">ReviewFlash</span>
             <span className="rounded bg-cyan-500/20 text-cyan-300 px-1.5 py-0.2 text-[9px] font-bold font-mono">
-              v2.0.0
+              {APP_VERSION}
             </span>
           </div>
           <p className="text-[11px] text-slate-500">

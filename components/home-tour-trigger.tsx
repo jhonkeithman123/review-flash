@@ -3,9 +3,13 @@
 import { GraduationCap } from "lucide-react";
 
 export function HomeTourTrigger() {
-  const handleOpenTour = () => {
+  const handleOpenTour = (e: React.MouseEvent) => {
     if (typeof window !== "undefined") {
-      window.dispatchEvent(new CustomEvent("open-reviewflash-tour"));
+      window.dispatchEvent(
+        new CustomEvent("open-reviewflash-tour", {
+          detail: { x: e.clientX, y: e.clientY },
+        })
+      );
     }
   };
 

@@ -279,27 +279,51 @@ import {
   StoredAiMessage,
 } from "./aiMemoryService";
 
+export interface StudyTutorContext {
+  currentCard?: { question: string; answer: string; tags?: string[]; difficulty?: number };
+  deckTitle?: string;
+  mode?: "review" | "test" | "general";
+  siteContext?: {
+    page?: string;
+    stats?: { reviewed: number; correct: number; accuracy: number; streakDays?: number; totalTests?: number };
+    decksSummary?: string[];
+    quizSummary?: string;
+    reviewProgress?: string;
+    specificMention?: string;
+  };
+}
+
 /**
  * Ask DITroy Study Tutor for guidance, mnemonics, hints, or explanations.
  * Automatically synchronizes context and message history with Firebase Firestore.
  */
 export async function askStudyTutor(
   userQuery: string,
-  context?: {
-    currentCard?: { question: string; answer: string; tags?: string[]; difficulty?: number };
-    deckTitle?: string;
-    mode?: "review" | "test" | "general";
-  },
+  context?: StudyTutorContext,
   conversationId: string = "review-flash-tutor"
 ): Promise<string> {
   let contextPrompt = "";
 
   if (context?.currentCard) {
-    contextPrompt = `\n[Current Flashcard Context:
+    contextPrompt += `\n[Current Flashcard Context:
 - Question: "${context.currentCard.question}"
 - Answer: "${context.currentCard.answer}"
+${context.currentCard.tags?.length ? `- Tags: ${context.currentCard.tags.join(", ")}` : ""}
+${context.currentCard.difficulty ? `- Difficulty Level: ${context.currentCard.difficulty}/5` : ""}
 ${context.deckTitle ? `- Deck: "${context.deckTitle}"` : ""}
 ${context.mode ? `- Mode: ${context.mode}` : ""}
+]\n`;
+  }
+
+  if (context?.siteContext) {
+    const sc = context.siteContext;
+    contextPrompt += `\n[Live Website & Session Context:
+${sc.page ? `- Current Webpage: ${sc.page}` : ""}
+${sc.reviewProgress ? `- Review Session Progress: ${sc.reviewProgress}` : ""}
+${sc.stats ? `- Student Stats: ${sc.stats.reviewed} cards reviewed, ${sc.stats.accuracy}% accuracy, ${sc.stats.streakDays || 1}-day streak` : ""}
+${sc.quizSummary ? `- Active Quiz Context: ${sc.quizSummary}` : ""}
+${sc.decksSummary?.length ? `- User Deck Library (${sc.decksSummary.length} decks): ${sc.decksSummary.slice(0, 8).join(", ")}` : ""}
+${sc.specificMention ? `- Targeted Focus (@mention): ${sc.specificMention}` : ""}
 ]\n`;
   }
 
