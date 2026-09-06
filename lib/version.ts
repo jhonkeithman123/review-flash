@@ -12,6 +12,11 @@ export interface VersionInfo {
 
 export const VERSION_HISTORY: readonly VersionInfo[] = [
   {
+    version: "v2.2.0",
+    codename: "The Practical Quest & Sovereign Fork Update",
+    releaseDate: "September 6, 2026",
+  },
+  {
     version: "v2.1.0",
     codename: "The Fluid Motion & Ambient Lounge Update",
     releaseDate: "September 4, 2026",

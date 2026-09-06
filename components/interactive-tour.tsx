@@ -30,6 +30,7 @@ import {
   Zap,
 } from "lucide-react";
 import Link from "next/link";
+import { usePracticalQuest } from "./practical-quest";
 
 interface TourStep {
   id: string;
@@ -130,6 +131,7 @@ const TOUR_STEPS: TourStep[] = [
 ];
 
 export function InteractiveTour() {
+  const { startQuest } = usePracticalQuest();
   const [isOpen, setIsOpen] = useState(false);
   const [isRendered, setIsRendered] = useState(false);
   const [isVisible, setIsVisible] = useState(false);
@@ -415,6 +417,35 @@ export function InteractiveTour() {
           <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
             {step.description}
           </p>
+
+          {/* Practical Quest Callout for users who prefer doing over reading */}
+          {step.id === "welcome" && (
+            <div className="rounded-2xl border border-amber-500/30 bg-gradient-to-r from-amber-500/15 via-orange-500/10 to-amber-500/15 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-lg shadow-amber-950/40">
+              <div className="flex items-start gap-3">
+                <div className="w-10 h-10 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-300 shrink-0">
+                  <Zap size={20} className="animate-pulse" />
+                </div>
+                <div>
+                  <div className="text-xs font-bold text-amber-300 uppercase tracking-wider">
+                    Hate Reading? Learn By Doing!
+                  </div>
+                  <p className="text-xs text-slate-200 mt-0.5 leading-snug">
+                    Take the live Hands-On Quest where the system coaches you directly on real app screens.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  handleCloseTour();
+                  startQuest();
+                }}
+                className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-extrabold text-xs px-4 py-2.5 shadow-md shadow-amber-500/20 transition active:scale-95 shrink-0 cursor-pointer"
+              >
+                <span>Start Hands-On Quest →</span>
+              </button>
+            </div>
+          )}
 
           {/* ================= STEP 2: NAVIGATION BREAKDOWN ================= */}
           {step.id === "navigation" && (

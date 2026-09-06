@@ -41,6 +41,7 @@ import {
 import { fetchDecks, fetchUserStats } from "@/lib/flashcardService";
 import { Deck, UserStats } from "@/types/flashcard";
 import { AiMarkdownRenderer } from "./ai-markdown-renderer";
+import { useConfirm } from "./confirm-prompt";
 
 
 export interface ChatMessage {
@@ -70,6 +71,7 @@ function isMessageTruncated(content: string): boolean {
 }
 
 export function AiChatDrawer() {
+  const { confirm } = useConfirm();
   const [isOpen, setIsOpen] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
@@ -503,6 +505,15 @@ Question: "${activeContext.question}" (Answer: "${activeContext.answer}")
 
   const handleDeleteSession = async (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
+    const confirmed = await confirm({
+      title: "Delete AI Chat Session?",
+      message: "Are you sure you want to permanently delete this chat history? This action cannot be undone.",
+      confirmText: "Yes, Delete",
+      cancelText: "Cancel",
+      variant: "danger",
+    });
+    if (!confirmed) return;
+
     await deleteAiConversationFromFirebase(id);
     if (id === conversationId) {
       handleNewSession();

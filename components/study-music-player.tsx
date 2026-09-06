@@ -14,6 +14,8 @@ import {
   StudyPlaylist,
   TrackItem,
 } from "@/lib/musicPlaylists";
+import { usePathname } from "next/navigation";
+import { useConfirm } from "./confirm-prompt";
 import { auth } from "@/lib/firebase";
 import { onAuthStateChanged, User } from "firebase/auth";
 import {
@@ -68,6 +70,7 @@ function formatTime(seconds: number): string {
 }
 
 export function StudyMusicPlayer() {
+  const { confirm } = useConfirm();
   // State
   const [isPlayerReady, setIsPlayerReady] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -831,8 +834,17 @@ export function StudyMusicPlayer() {
   };
 
   // Delete Custom User Playlist
-  const handleDeleteCustomPlaylist = (playlistId: string, e: React.MouseEvent) => {
+  const handleDeleteCustomPlaylist = async (playlistId: string, e: React.MouseEvent) => {
     e.stopPropagation();
+    const confirmed = await confirm({
+      title: "Remove Custom Playlist?",
+      message: "Are you sure you want to remove this custom playlist? You can re-add it anytime with its YouTube URL.",
+      confirmText: "Yes, Remove",
+      cancelText: "Keep Playlist",
+      variant: "danger",
+    });
+    if (!confirmed) return;
+
     const updated = userCustomPlaylists.filter((p) => p.id !== playlistId);
     setUserCustomPlaylists(updated);
     saveUserCustomPlaylists(updated, currentUser?.uid);

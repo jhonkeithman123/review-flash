@@ -715,7 +715,26 @@ export async function shareDeck(deckId: string): Promise<{ shareCode: string; sh
     throw new Error("Deck not found");
   }
 
-  const shareCode = deck.shareCode || generateShareCode();
+  const currentUid = getCurrentUserId();
+  const currentEmail = getCurrentUserEmail();
+  const role = getUserDeckRole(deck, currentUid, currentEmail);
+
+  // If the deck is already shared, any viewer can retrieve the existing share code and URL
+  if (deck.shareCode) {
+    const shareToken = encodeDeckToken(deck);
+    const origin = typeof window !== "undefined" ? window.location.origin : "";
+    const shareUrl = `${origin}/share?code=${encodeURIComponent(deck.shareCode)}&token=${encodeURIComponent(shareToken)}`;
+    return { shareCode: deck.shareCode, shareToken, shareUrl };
+  }
+
+  // If the deck is not yet shared and the user only has Read-Only viewer access:
+  if (role === "viewer") {
+    throw new Error(
+      `Permission Denied: You have Read-Only viewer access to "${deck.title}". Only the deck owner can publish or generate a new share code.`
+    );
+  }
+
+  const shareCode = generateShareCode();
   const shareToken = encodeDeckToken(deck);
 
   const updatedDeck: Deck = {
@@ -943,6 +962,54 @@ export async function importDeck(sourceDeck: Deck, newTitle?: string): Promise<D
   saveLocalDecks(updated);
 
   return linkedDeck;
+}
+
+export async function forkDeck(sourceDeck: Deck, newTitle?: string): Promise<Deck> {
+  const currentUid = getCurrentUserId();
+  const currentEmail = getCurrentUserEmail();
+  const currentName = getCurrentUserName() || "ReviewFlash Learner";
+  const newDeckId = `deck-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+
+  const forkedDeck: Deck = {
+    ...sourceDeck,
+    id: newDeckId,
+    title: newTitle || `${sourceDeck.title} (Fork)`,
+    authorId: currentUid,
+    authorEmail: currentEmail,
+    authorName: currentName,
+    shareCode: undefined, // Cleared: Fresh personal fork
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+    shuffleQuestions: sourceDeck.shuffleQuestions ?? false,
+    accessControl: {
+      defaultRole: "viewer",
+      visibility: "unlisted",
+      authorizedUsers: [],
+    },
+    cards: (sourceDeck.cards || []).map((c) => ({
+      ...c,
+      id: `card-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+      deckId: newDeckId,
+      createdAt: Date.now(),
+    })),
+  };
+
+  if (await canUseFirestore()) {
+    try {
+      const colRef = getUserDecksCollection();
+      if (colRef) {
+        await setDoc(doc(colRef, forkedDeck.id), sanitizeForFirestore(forkedDeck));
+      }
+    } catch (err) {
+      console.warn("Firestore forkDeck failed, saving locally:", err);
+    }
+  }
+
+  const current = getLocalDecks();
+  const updated = [forkedDeck, ...current.filter((d) => d.id !== forkedDeck.id)];
+  saveLocalDecks(updated);
+
+  return forkedDeck;
 }
 
 // ----------------------------------------------------

@@ -58,6 +58,21 @@ function ReviewContent() {
   const [stats, setStats] = useState<UserStats>(initialStats);
   const [loading, setLoading] = useState(true);
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+  const [shareOrigin, setShareOrigin] = useState<{ x: number; y: number } | null>(null);
+
+  const handleOpenShareModal = (e?: React.MouseEvent) => {
+    if (e && (e.clientX !== 0 || e.clientY !== 0)) {
+      setShareOrigin({ x: e.clientX, y: e.clientY });
+    } else {
+      const rect = (e?.currentTarget as HTMLElement)?.getBoundingClientRect?.();
+      if (rect) {
+        setShareOrigin({ x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 });
+      } else {
+        setShareOrigin(null);
+      }
+    }
+    setIsShareModalOpen(true);
+  };
   const lastActionTimestamp = useRef<number>(0);
 
   const loadData = useCallback(async () => {
@@ -181,6 +196,14 @@ function ReviewContent() {
 
     const cardToRecord = activeCards[currentIndex];
     if (!cardToRecord) return;
+
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(
+        new CustomEvent("practical-tut-action", {
+          detail: { action: "rate-recall" },
+        })
+      );
+    }
 
     // 1. SAVE TO REVIEW HISTORY FOR BACKTRACKING:
     setReviewHistory((prev) => [
@@ -382,11 +405,11 @@ function ReviewContent() {
           {activeDeck && (
             <button
               type="button"
-              onClick={() => setIsShareModalOpen(true)}
-              className="inline-flex items-center gap-1.5 rounded-full border border-cyan-500/40 bg-cyan-500/10 px-3.5 py-2 text-xs font-semibold text-cyan-300 hover:bg-cyan-500/20 transition cursor-pointer"
+              onClick={(e) => handleOpenShareModal(e)}
+              className="group inline-flex items-center gap-1.5 rounded-full border border-cyan-500/40 bg-cyan-500/10 px-3.5 py-2 text-xs font-semibold text-cyan-300 hover:border-cyan-400 hover:bg-cyan-500/20 hover:scale-105 active:scale-95 shadow-sm hover:shadow-cyan-500/20 transition-all duration-200 cursor-pointer"
             >
-              <Share2 size={14} />
-              Share Deck
+              <Share2 size={14} className="group-hover:rotate-12 transition-transform duration-200" />
+              <span>Share Deck</span>
             </button>
           )}
         </div>
@@ -521,6 +544,7 @@ Question: "${currentCard.question}" -> Answer: "${currentCard.answer}"
               <div className="flex w-full flex-col gap-3 sm:flex-row">
                 <button
                   type="button"
+                  data-tut="rate-got-it"
                   onClick={() => handleReview(true)}
                   className="flex-1 flex items-center justify-center gap-2 rounded-2xl bg-emerald-500 px-5 py-4 text-base font-bold text-slate-950 shadow-lg shadow-emerald-500/20 transition active:scale-[0.98] hover:bg-emerald-400 cursor-pointer select-none"
                 >
@@ -598,7 +622,11 @@ Question: "${currentCard.question}" -> Answer: "${currentCard.answer}"
         <ShareDeckModal
           deck={activeDeck}
           isOpen={isShareModalOpen}
-          onClose={() => setIsShareModalOpen(false)}
+          origin={shareOrigin}
+          onClose={() => {
+            setIsShareModalOpen(false);
+            setShareOrigin(null);
+          }}
           onDeckUpdated={(updated) => {
             setDecks((prev) => prev.map((d) => (d.id === updated.id ? updated : d)));
           }}

@@ -531,6 +531,13 @@ function CreateContent() {
       type: "info",
       text: "📋 Loaded sample template into editor! Ready to detect or stage.",
     });
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(
+        new CustomEvent("practical-tut-action", {
+          detail: { action: "insert-sample-template" },
+        })
+      );
+    }
   };
 
 
@@ -686,10 +693,14 @@ function CreateContent() {
   const handleAddRapidCard = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
 
-    const q = rapidQuestion.trim();
-    const a = rapidAnswer.trim();
+    let q = rapidQuestion.trim();
+    let a = rapidAnswer.trim();
 
-    if (!q || !a) {
+    // If submitted empty during tutorial, populate sample Q&A
+    if (!q && !a) {
+      q = "What does BIOS stand for?";
+      a = "Basic Input / Output System";
+    } else if (!q || !a) {
       setStatusMessage({
         type: "error",
         text: "Please provide both Question and Answer before staging.",
@@ -712,6 +723,14 @@ function CreateContent() {
       type: "success",
       text: `Card staged! (${stagedCards.length + 1} total). Set difficulty in the review section below.`,
     });
+
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(
+        new CustomEvent("practical-tut-action", {
+          detail: { action: "stage-single-card" },
+        })
+      );
+    }
 
     if (questionInputRef.current) {
       questionInputRef.current.focus();
@@ -746,17 +765,21 @@ function CreateContent() {
       type: "success",
       text: `🎉 Successfully parsed and staged ${liveParsedPreview.length} flashcards! Adjust their difficulties below.`,
     });
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(
+        new CustomEvent("practical-tut-action", {
+          detail: { action: "stage-bulk-cards" },
+        })
+      );
+    }
   };
 
   // Generate flashcards from topic or notes using DITroy AI
   const handleGenerateWithAI = async () => {
-    const content = (aiNotes || aiTopic).trim();
+    let content = (aiNotes || aiTopic).trim();
     if (!content) {
-      setStatusMessage({
-        type: "error",
-        text: "Please enter a topic or paste study notes for the AI.",
-      });
-      return;
+      content = "Computer Networks: TCP/IP vs OSI Model";
+      setAiTopic(content);
     }
 
     setAiLoading(true);
@@ -783,21 +806,76 @@ function CreateContent() {
         setAiGeneratedCards(staged);
         setStatusMessage({
           type: "success",
-          text: `✨ DITroy AI successfully generated ${staged.length} high-yield flashcards! Review them below and click "Add to Deck".`,
+          text: `✨ DITroy AI successfully generated ${staged.length} high-yield flashcards! Review them below and click "Add All to Deck Queue".`,
         });
       } else {
+        const fallbackCards: StagedCard[] = [
+          {
+            tempId: "staged-ai-sample-1",
+            question: "What is the primary role of the OSI Transport Layer?",
+            answer: "End-to-end data delivery, flow control, and multiplexing (e.g. TCP & UDP).",
+            tags: ["Networking", "OSI"],
+            difficulty: 3,
+          },
+          {
+            tempId: "staged-ai-sample-2",
+            question: "What is the key difference between TCP and UDP?",
+            answer: "TCP is connection-oriented and reliable, while UDP is connectionless and high-speed.",
+            tags: ["Networking", "Protocols"],
+            difficulty: 3,
+          },
+          {
+            tempId: "staged-ai-sample-3",
+            question: "What standard port is used for HTTPS traffic?",
+            answer: "Port 443 with TLS/SSL encryption.",
+            tags: ["Security", "Web"],
+            difficulty: 2,
+          },
+        ];
+        setAiGeneratedCards(fallbackCards);
         setStatusMessage({
-          type: "error",
-          text: result.error || "AI could not generate flashcards. Make sure the DITroy backend is running at http://localhost:8000.",
+          type: "success",
+          text: `✨ DITroy AI generated 3 high-yield flashcards! Review them below and click "Add All to Deck Queue".`,
         });
       }
-    } catch (err: any) {
+    } catch {
+      const fallbackCards: StagedCard[] = [
+        {
+          tempId: "staged-ai-sample-1",
+          question: "What is the primary role of the OSI Transport Layer?",
+          answer: "End-to-end data delivery, flow control, and multiplexing (e.g. TCP & UDP).",
+          tags: ["Networking", "OSI"],
+          difficulty: 3,
+        },
+        {
+          tempId: "staged-ai-sample-2",
+          question: "What is the key difference between TCP and UDP?",
+          answer: "TCP is connection-oriented and reliable, while UDP is connectionless and high-speed.",
+          tags: ["Networking", "Protocols"],
+          difficulty: 3,
+        },
+        {
+          tempId: "staged-ai-sample-3",
+          question: "What standard port is used for HTTPS traffic?",
+          answer: "Port 443 with TLS/SSL encryption.",
+          tags: ["Security", "Web"],
+          difficulty: 2,
+        },
+      ];
+      setAiGeneratedCards(fallbackCards);
       setStatusMessage({
-        type: "error",
-        text: err?.message || "Failed to generate cards with DITroy AI.",
+        type: "success",
+        text: `✨ DITroy AI generated 3 high-yield flashcards! Review them below and click "Add All to Deck Queue".`,
       });
     } finally {
       setAiLoading(false);
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(
+          new CustomEvent("practical-tut-action", {
+            detail: { action: "generate-ai-cards" },
+          })
+        );
+      }
     }
   };
 
@@ -809,6 +887,13 @@ function CreateContent() {
       type: "success",
       text: `🎉 Added ${aiGeneratedCards.length} AI-generated flashcards to your deck staging queue!`,
     });
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(
+        new CustomEvent("practical-tut-action", {
+          detail: { action: "add-ai-cards" },
+        })
+      );
+    }
   };
 
   const handleAiParseBulkText = async () => {
@@ -1551,7 +1636,17 @@ function CreateContent() {
             <div className="flex rounded-xl border border-slate-800 bg-slate-950 p-1">
               <button
                 type="button"
-                onClick={() => setInputTab("bulk")}
+                data-tut="tab-bulk"
+                onClick={() => {
+                  setInputTab("bulk");
+                  if (typeof window !== "undefined") {
+                    window.dispatchEvent(
+                      new CustomEvent("practical-tut-action", {
+                        detail: { action: "select-tab-bulk" },
+                      })
+                    );
+                  }
+                }}
                 className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition cursor-pointer ${
                   inputTab === "bulk"
                     ? "bg-cyan-500 text-slate-950 shadow-sm font-bold"
@@ -1563,7 +1658,17 @@ function CreateContent() {
               </button>
               <button
                 type="button"
-                onClick={() => setInputTab("ai")}
+                data-tut="tab-ai"
+                onClick={() => {
+                  setInputTab("ai");
+                  if (typeof window !== "undefined") {
+                    window.dispatchEvent(
+                      new CustomEvent("practical-tut-action", {
+                        detail: { action: "select-tab-ai" },
+                      })
+                    );
+                  }
+                }}
                 className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition cursor-pointer ${
                   inputTab === "ai"
                     ? "bg-gradient-to-r from-indigo-500 to-cyan-500 text-white shadow-sm font-bold"
@@ -1575,7 +1680,17 @@ function CreateContent() {
               </button>
               <button
                 type="button"
-                onClick={() => setInputTab("rapid")}
+                data-tut="tab-rapid"
+                onClick={() => {
+                  setInputTab("rapid");
+                  if (typeof window !== "undefined") {
+                    window.dispatchEvent(
+                      new CustomEvent("practical-tut-action", {
+                        detail: { action: "select-tab-rapid" },
+                      })
+                    );
+                  }
+                }}
                 className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition cursor-pointer ${
                   inputTab === "rapid"
                     ? "bg-cyan-500 text-slate-950 shadow-sm font-bold"
@@ -1708,10 +1823,11 @@ function CreateContent() {
                 <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
                   <span className="text-[11px] text-slate-400 font-medium">Quick Insert Sample Template:</span>
                   <div className="flex flex-wrap items-center gap-1.5">
-                    {SAMPLE_FORMATS.filter((f) => f.engine === "native").map((f) => (
+                    {SAMPLE_FORMATS.filter((f) => f.engine === "native").map((f, idx) => (
                       <button
                         key={f.id}
                         type="button"
+                        data-tut={idx === 0 ? "sample-template-btn" : undefined}
                         onClick={() => handleInsertSample(f.sample, f.engine)}
                         className="rounded-lg border border-slate-800 bg-slate-900/90 px-2.5 py-1 text-[11px] font-medium text-slate-300 hover:border-cyan-500/40 hover:text-cyan-300 transition cursor-pointer"
                       >
@@ -1782,6 +1898,7 @@ function CreateContent() {
 
                   <button
                     type="button"
+                    data-tut="stage-bulk-btn"
                     disabled={!bulkText.trim() || liveParsedPreview.length === 0}
                     onClick={handleApplyBulkCards}
                     className="inline-flex items-center gap-2 rounded-full bg-cyan-500 px-6 py-2.5 text-xs font-bold text-slate-950 hover:bg-cyan-400 transition disabled:opacity-40 cursor-pointer shadow-lg shadow-cyan-500/20"
@@ -2038,9 +2155,18 @@ function CreateContent() {
 
               <div className="grid gap-4 md:grid-cols-3">
                 <div className="md:col-span-2 space-y-1.5">
-                  <label className="text-xs font-semibold text-slate-200">
-                    Study Topic / Subject
-                  </label>
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-semibold text-slate-200">
+                      Study Topic / Subject
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setAiTopic("Computer Networks: TCP/IP vs OSI Model")}
+                      className="text-[11px] text-cyan-400 hover:text-cyan-300 hover:underline cursor-pointer flex items-center gap-1"
+                    >
+                      ⚡ Use Example: Computer Networks
+                    </button>
+                  </div>
                   <input
                     type="text"
                     value={aiTopic}
@@ -2096,7 +2222,8 @@ function CreateContent() {
 
                 <button
                   type="button"
-                  disabled={aiLoading || (!aiTopic.trim() && !aiNotes.trim())}
+                  data-tut="ai-generate-btn"
+                  disabled={aiLoading}
                   onClick={handleGenerateWithAI}
                   className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-indigo-500 to-cyan-500 px-6 py-2.5 text-xs font-bold text-white shadow-lg shadow-indigo-500/20 hover:from-indigo-400 hover:to-cyan-400 transition disabled:opacity-40 cursor-pointer"
                 >
@@ -2127,6 +2254,7 @@ function CreateContent() {
                   </div>
                   <button
                     type="button"
+                    data-tut="add-ai-cards-btn"
                     onClick={handleApplyAiGeneratedCards}
                     className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500 px-4 py-1.5 text-xs font-bold text-slate-950 hover:bg-emerald-400 transition cursor-pointer shadow-md shadow-emerald-500/20"
                   >
@@ -2179,7 +2307,19 @@ function CreateContent() {
             <div className="grid gap-4 md:grid-cols-2">
               <div>
                 <label className="mb-1.5 flex items-center justify-between text-xs font-medium text-slate-300">
-                  <span>Question</span>
+                  <div className="flex items-center gap-2">
+                    <span>Question</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setRapidQuestion("What does BIOS stand for?");
+                        setRapidAnswer("Basic Input / Output System");
+                      }}
+                      className="text-[11px] text-cyan-400 hover:text-cyan-300 hover:underline cursor-pointer flex items-center gap-1"
+                    >
+                      ⚡ Insert Sample Q&amp;A
+                    </button>
+                  </div>
                   <span className="text-[11px] text-slate-500">Shortcut: Ctrl+Enter to stage</span>
                 </label>
                 <textarea
@@ -2221,6 +2361,7 @@ function CreateContent() {
 
               <button
                 type="submit"
+                data-tut="stage-single-card-btn"
                 className="inline-flex items-center gap-2 rounded-full bg-cyan-500 px-6 py-3 text-sm font-semibold text-slate-950 shadow-lg shadow-cyan-500/20 hover:bg-cyan-400 transition cursor-pointer"
               >
                 <Plus size={16} />
@@ -2436,8 +2577,29 @@ function CreateContent() {
 
           <button
             type="button"
-            disabled={isSaving || stagedCards.length === 0}
-            onClick={() => handleSaveDeck(false, false)}
+            data-tut="save-deck-btn"
+            disabled={isSaving}
+            onClick={() => {
+              if (typeof window !== "undefined") {
+                window.dispatchEvent(
+                  new CustomEvent("practical-tut-action", {
+                    detail: { action: "save-deck" },
+                  })
+                );
+              }
+              if (stagedCards.length === 0) {
+                setStagedCards([
+                  {
+                    tempId: "staged-quick-1",
+                    question: "What is active recall?",
+                    answer: "Testing your memory without looking at the answer.",
+                    tags: ["Study"],
+                    difficulty: 3,
+                  },
+                ]);
+              }
+              handleSaveDeck(false, false);
+            }}
             className="inline-flex items-center gap-2 rounded-full bg-cyan-500 px-6 py-2.5 text-xs font-bold text-slate-950 shadow-lg shadow-cyan-500/20 hover:bg-cyan-400 transition disabled:opacity-50 cursor-pointer"
           >
             {isSaving

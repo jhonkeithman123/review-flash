@@ -34,6 +34,7 @@ import {
   Share2,
   Shield,
   Sparkles,
+  Target,
   Trash2,
   User,
   UserCircle2,
@@ -49,6 +50,7 @@ import {
 import { useEffect, useRef, useState } from "react";
 import { AuthModal } from "./auth-modal";
 import { APP_VERSION } from "@/lib/version";
+import { usePracticalQuest } from "./practical-quest";
 
 // Core Primary Nav Links
 const primaryNavItems = [
@@ -60,6 +62,7 @@ const primaryNavItems = [
 
 export function Navbar() {
   const pathname = usePathname();
+  const { startQuest } = usePracticalQuest();
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [anonId, setAnonId] = useState<string>("");
   const [copiedId, setCopiedId] = useState(false);
@@ -403,6 +406,26 @@ export function Navbar() {
                   <div className="flex-1 min-w-0">
                     <div className="font-semibold group-hover:text-emerald-300 transition-colors">Interactive Tour</div>
                     <div className="text-[10px] text-slate-400">Step-by-step walkthrough</div>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMoreDropdownOpen(false);
+                    startQuest();
+                  }}
+                  className="w-full group flex items-center gap-2.5 rounded-xl px-2.5 py-2 text-xs font-medium text-slate-200 hover:bg-slate-900/90 hover:text-white transition-all duration-200 hover:translate-x-1.5 active:scale-[0.98] text-left cursor-pointer"
+                >
+                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-cyan-500/10 text-cyan-400 group-hover:bg-cyan-500/20 group-hover:scale-115 group-hover:rotate-12 transition-all duration-200">
+                    <Target size={15} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5 font-semibold group-hover:text-cyan-300 transition-colors">
+                      <span>Hands-On Quest</span>
+                      <span className="rounded bg-amber-500/20 text-amber-300 px-1 py-0.2 text-[9px] font-bold">Action Tutoring</span>
+                    </div>
+                    <div className="text-[10px] text-slate-400">Learn by doing directly</div>
                   </div>
                 </button>
 
@@ -895,6 +918,18 @@ export function Navbar() {
 
           {/* Quick Actions inside Drawer */}
           <div className="pt-2 border-t border-slate-800/80 space-y-2">
+            <button
+              type="button"
+              onClick={() => {
+                setMobileMenuOpen(false);
+                startQuest();
+              }}
+              className="w-full group flex items-center justify-center gap-2 rounded-xl border border-amber-500/40 bg-gradient-to-r from-amber-500/15 via-orange-500/10 to-amber-500/15 px-3 py-2.5 text-xs font-bold text-amber-300 hover:bg-amber-500/20 hover:scale-[1.02] active:scale-95 transition-all duration-200 cursor-pointer shadow-sm"
+            >
+              <Target size={15} className="text-amber-400 animate-pulse" />
+              <span>🎯 Hands-On Quest (Learn by Doing)</span>
+            </button>
+
             <div className="grid grid-cols-2 gap-2">
               <button
                 type="button"

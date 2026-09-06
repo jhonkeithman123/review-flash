@@ -43,9 +43,17 @@ export function FlashcardCard({
     <div className="perspective-1000 w-full max-w-2xl mx-auto">
       <button
         type="button"
+        data-tut="flip-card"
         onClick={() => {
           setIsFlipped((prev) => !prev);
           onToggle?.();
+          if (typeof window !== "undefined") {
+            window.dispatchEvent(
+              new CustomEvent("practical-tut-action", {
+                detail: { action: "flip-card" },
+              })
+            );
+          }
         }}
         aria-label="Flip flashcard"
         className="group relative block h-[380px] w-full cursor-pointer select-none text-left sm:h-[430px] transition-transform duration-300 hover:scale-[1.01]"

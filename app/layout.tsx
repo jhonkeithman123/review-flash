@@ -5,6 +5,8 @@ import { InteractiveTour } from "@/components/interactive-tour";
 import { AiChatDrawer } from "@/components/ai-chat-drawer";
 import { WhatsNewModal } from "@/components/whats-new-modal";
 import { StudyMusicPlayer } from "@/components/study-music-player";
+import { ConfirmPromptProvider } from "@/components/confirm-prompt";
+import { PracticalQuestProvider } from "@/components/practical-quest";
 import { AdblockDetector } from "@/components/adblock-detector";
 import type { Metadata, Viewport } from "next";
 
@@ -44,14 +46,18 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className="bg-slate-950 text-slate-100 antialiased min-h-dvh flex flex-col">
-        <Navbar />
-        <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-6 sm:py-8 pb-safe">{children}</main>
-        <Footer />
-        <InteractiveTour />
-        <WhatsNewModal />
-        <AiChatDrawer />
-        <StudyMusicPlayer />
-        <AdblockDetector />
+        <ConfirmPromptProvider>
+          <PracticalQuestProvider>
+            <Navbar />
+            <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-6 sm:py-8 pb-safe">{children}</main>
+            <Footer />
+            <InteractiveTour />
+            <WhatsNewModal />
+            <AiChatDrawer />
+            <StudyMusicPlayer />
+            <AdblockDetector />
+          </PracticalQuestProvider>
+        </ConfirmPromptProvider>
       </body>
     </html>
   );

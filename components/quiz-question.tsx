@@ -93,7 +93,17 @@ export function QuizQuestion({
             <button
               key={`${idx}-${option}`}
               type="button"
-              onClick={() => onSelect(option)}
+              data-tut="quiz-option"
+              onClick={() => {
+                onSelect(option);
+                if (typeof window !== "undefined") {
+                  window.dispatchEvent(
+                    new CustomEvent("practical-tut-action", {
+                      detail: { action: "quiz-option" },
+                    })
+                  );
+                }
+              }}
               className={`group flex items-center gap-3.5 rounded-2xl border p-3.5 sm:p-4 text-left text-sm sm:text-base font-medium transition-all duration-150 active:scale-[0.985] cursor-pointer min-h-[52px] ${
                 isSelected
                   ? "border-cyan-400 bg-cyan-500/15 text-cyan-100 shadow-lg shadow-cyan-500/10 ring-1 ring-cyan-400/50"

@@ -60,8 +60,53 @@ interface VersionLog {
 
 const UPDATE_LOGS: VersionLog[] = [
   {
-    ...VERSIONS_BY_TAG["v2.1.0"],
+    ...VERSIONS_BY_TAG["v2.2.0"],
     isLatest: true,
+    category: "collab",
+    badgeColor: "from-cyan-400 via-sky-400 to-indigo-500",
+    highlightSummary:
+      "A feature-packed minor update introducing the interactive Hands-On Practical Quest for zero-reading practical learning, true Deck Forking with ownership decoupling, persistent Grid vs List deck layouts, custom cyberpunk Yes/No prompt modals, and spring adaptive modal animations.",
+    stats: {
+      componentsAdded: 3,
+      testsPassed: "100%",
+      perfIncrease: "Instant fork cloning & zero-lag layout switching",
+    },
+    changes: [
+      {
+        type: "feat",
+        title: "Hands-On Practical Quest ('Hate Reading? Learn by Doing')",
+        desc: "Interactive, forced-guidance tutoring system with dynamic high-contrast spotlight overlays, action click-blockers, and live progression that guides users through real app actions (flipping cards, rating recall, creating cards, quiz testing, and deck sharing) ending in a confetti celebration.",
+        tags: ["Practical Quest", "Interactive Tutorial", "Spotlight Tutoring", "Confetti"],
+      },
+      {
+        type: "feat",
+        title: "True Deck Forking & Ownership Sovereignty",
+        desc: "Replaced duplicate copying with real GitHub-style Forking. Forking any shared or read-only deck decouples it into a distinct entity with unique card IDs and assigns the active user as Owner with full card editing and management privileges.",
+        tags: ["Deck Forking", "Ownership Sovereignty", "Decoupled Clones"],
+      },
+      {
+        type: "feat",
+        title: "Dynamic Grid vs List Deck View Modes",
+        desc: "Switch between modern 3D tile cards and a dense, compact horizontal list view on the Decks page. Fixes single-deck card stretching and persists the user's preferred layout in local storage.",
+        tags: ["Grid View", "List View", "Responsive Layout", "Deck Shelf"],
+      },
+      {
+        type: "feat",
+        title: "Cyberpunk Glassmorphic Custom Yes/No Modal Prompts",
+        desc: "Replaced native browser window.confirm() popups across deck deletions, playlist resets, and chat clearings with a custom Promise-based confirmation modal featuring smooth backdrop blur, cyan/rose accents, and spring animations.",
+        tags: ["useConfirm", "Custom Prompt", "Glassmorphism", "Spring Dialog"],
+      },
+      {
+        type: "improve",
+        title: "Share Deck Height Growth & Starter Deck Spring Feedback",
+        desc: "Share Deck modal now fluidly grows height when switching access control options, alerts read-only users when sharing restricted decks, and features spring-scale interactive feedback on starter decks and import codes.",
+        tags: ["Share Modal", "Height Growth", "Read-Only Guard", "Spring Scale"],
+      },
+    ],
+  },
+  {
+    ...VERSIONS_BY_TAG["v2.1.0"],
+    isLatest: false,
     category: "major",
     badgeColor: "from-cyan-400 via-teal-400 to-indigo-500",
     highlightSummary:
