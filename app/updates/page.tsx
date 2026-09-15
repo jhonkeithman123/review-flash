@@ -60,8 +60,53 @@ interface VersionLog {
 
 const UPDATE_LOGS: VersionLog[] = [
   {
-    ...VERSIONS_BY_TAG["v2.2.0"],
+    ...VERSIONS_BY_TAG["v2.2.1"],
     isLatest: true,
+    category: "studio",
+    badgeColor: "from-cyan-400 via-teal-400 to-emerald-500",
+    highlightSummary:
+      "A minor bug fix and improvement update resolving long text overflow and layout clipping across Review and Test modes with adaptive typography and internal smooth scrolling, paired with physical 3D card dealing and tactile directional transitions.",
+    stats: {
+      componentsAdded: 2,
+      testsPassed: "100%",
+      perfIncrease: "Zero text clipping & 60fps 3D physical card physics",
+    },
+    changes: [
+      {
+        type: "fix",
+        title: "Adaptive Typography & Long Text Scrolling (Review & Test)",
+        desc: "Fixed text overflow where long questions, comprehensive answers, or code snippets clipped outside card boundaries. Implemented dynamic font scaling (from text-4xl down to text-sm) and smooth custom-styled internal scrolling with preserved line breaks (whitespace-pre-wrap).",
+        tags: ["Text Overflow Fix", "Adaptive Typography", "Custom Scrollbar", "Responsive"],
+      },
+      {
+        type: "feat",
+        title: "Physical 3D Card Deal & Tactile Switch Animations",
+        desc: "Replaced static text-swapping with physical 3D deck deal and switch physics. Includes emerald burst elevation on Mastered, rose slide on Review Again, 3D spring dealing on Next/Prev, and center depth pop on card jumps.",
+        tags: ["3D Card Physics", "Deal Animation", "Emerald Burst", "Spring Settle"],
+      },
+      {
+        type: "fix",
+        title: "Test Mode Multiline Option Wrapping & Cascade Transitions",
+        desc: "Multiple-choice choices now gracefully wrap multi-line text (min-h-[54px]) without truncating or overlapping option letter badges, accompanied by staggered cascade entrance animations.",
+        tags: ["Multiline Options", "Test Mode", "Staggered Cascade", "Choice Wrap"],
+      },
+      {
+        type: "improve",
+        title: "Study Deck Set Division & Remainder-to-Last Allocation",
+        desc: "Divide study sets into Set A, B, C, D... or Set 1, 2, 3... with predefined (20, 30, 40, 45, 50) or custom splits. Odd remainder items are automatically merged into the final set without creating awkward remainder sets.",
+        tags: ["Set Divider", "Set A/B/C", "Remainder Allocation", "Deck Studio"],
+      },
+      {
+        type: "fix",
+        title: "Firestore Write Stream Exhaustion Throttling",
+        desc: "Resolved Firestore [code=resource-exhausted] write stream exceptions during rapid review rating and test taking by introducing optimistic local state updates and async background write debouncing.",
+        tags: ["Firestore Fix", "Resource Exhaustion Guard", "Write Throttling"],
+      },
+    ],
+  },
+  {
+    ...VERSIONS_BY_TAG["v2.2.0"],
+    isLatest: false,
     category: "collab",
     badgeColor: "from-cyan-400 via-sky-400 to-indigo-500",
     highlightSummary:

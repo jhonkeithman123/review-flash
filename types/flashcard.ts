@@ -25,6 +25,16 @@ export interface DeckAccessControl {
   authorizedUsers?: AuthorizedCollaborator[];
 }
 
+export type SetNamingStyle = "letters" | "numbers";
+export type SetDivisionMode = "count" | "size";
+
+export interface DeckSetDivisionConfig {
+  enabled: boolean;
+  mode: SetDivisionMode; // "count" = divide into N sets | "size" = max items per set
+  value: number; // e.g. 2 for 2 sets, OR 30 for 30 cards per set
+  namingStyle: SetNamingStyle; // "letters" (Set A, B, C) or "numbers" (Set 1, 2, 3)
+}
+
 export interface Deck {
   id: string;
   title: string;
@@ -40,6 +50,7 @@ export interface Deck {
   authorEmail?: string;
   shuffleQuestions?: boolean; // Shuffle question order for each take/session
   accessControl?: DeckAccessControl; // Permission settings
+  setDivision?: DeckSetDivisionConfig; // Predefined Set Division Settings
 }
 
 export interface UserStats {
@@ -63,8 +74,64 @@ export interface TestSessionStats {
   scorePercentage: number;
 }
 
+export interface DeckScoreBreakdown {
+  deckId: string;
+  deckTitle: string;
+  total: number;
+  correct: number;
+  accuracy: number;
+}
+
+export interface TestRecord {
+  id: string;
+  deckId: string;
+  deckTitle: string;
+  totalQuestions: number;
+  correctAnswers: number;
+  scorePercentage: number;
+  timeSpentSeconds: number;
+  completedAt: number;
+  adaptivePeak: number;
+  deckBreakdowns?: DeckScoreBreakdown[];
+  missedCardIds?: string[];
+}
+
+export interface ActiveTestState {
+  deckId: string;
+  questionIndex: number;
+  questions: QuizQuestionItem[];
+  userAnswers: Record<number, string>;
+  flaggedIndices: number[];
+  timeLeft: number;
+  isUntimed: boolean;
+  isShuffleActive: boolean;
+  adaptiveStreak: number;
+  adaptivePeak: number;
+  questionCountPreset: string;
+  lastUpdated: number;
+}
+
+export interface DeckScoreSummary {
+  latestScore: number;
+  bestScore: number;
+  lastTakenAt: number;
+  totalTakes: number;
+}
+
 export interface SharedDeckPayload {
   version: number;
   deck: Omit<Deck, "id"> & { id?: string };
   sharedAt: number;
 }
+
+export interface DeckCardSet {
+  setIndex: number; // 0-based
+  setNumber: number; // 1-based (e.g. 1, 2)
+  setName: string; // e.g. "Set A" or "Set 1"
+  label: string; // e.g. "Set A (Cards 1–25)"
+  startIndex: number; // 0-based inclusive
+  endIndex: number; // 0-based exclusive
+  cardCount: number;
+  cards: Flashcard[];
+}
+

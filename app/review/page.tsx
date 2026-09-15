@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import {
@@ -8,16 +8,22 @@ import {
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
+  Hash,
+  ListOrdered,
   Plus,
   RotateCcw,
+  Search,
   Share2,
   Shuffle,
   Sparkles,
+  X,
 } from "lucide-react";
 import { FlashcardCard } from "@/components/flashcard-card";
 import { ProgressStats } from "@/components/progress-stats";
 import { DeckSelector } from "@/components/deck-selector";
+import { DeckSetSelector } from "@/components/deck-set-selector";
 import { ShareDeckModal } from "@/components/share-deck-modal";
+import { JumpCardModal } from "@/components/jump-card-modal";
 import {
   fetchDecks,
   fetchFlashcards,
@@ -25,7 +31,8 @@ import {
   recordReviewResult,
   shuffleArray,
 } from "@/lib/flashcardService";
-import { Deck, Flashcard, UserStats } from "@/types/flashcard";
+import { divideCardsIntoSets } from "@/lib/setDivider";
+import { Deck, DeckCardSet, DeckSetDivisionConfig, Flashcard, UserStats } from "@/types/flashcard";
 
 interface ReviewHistoryItem {
   index: number;
@@ -52,8 +59,20 @@ function ReviewContent() {
   const [selectedDeckId, setSelectedDeckId] = useState<string>(initialDeckParam);
   const [allCards, setAllCards] = useState<Flashcard[]>([]);
   const [activeCards, setActiveCards] = useState<Flashcard[]>([]);
+  const [setDivisionConfig, setSetDivisionConfig] = useState<DeckSetDivisionConfig>({
+    enabled: false,
+    mode: "count",
+    value: 1,
+    namingStyle: "letters",
+  });
+  const [activeSetIndex, setActiveSetIndex] = useState<number>(0);
   const [isShuffleActive, setIsShuffleActive] = useState(false);
   const [currentIndex, setCurrentIndex] = useState(0);
+  const [cardDirection, setCardDirection] = useState<"next" | "prev" | "jump" | "mastered" | "review" | "pop">("pop");
+  const [jumpInput, setJumpInput] = useState<string>("1");
+  const [isJumpModalOpen, setIsJumpModalOpen] = useState(false);
+  const [jumpOrigin, setJumpOrigin] = useState<{ x: number; y: number } | null>(null);
+  const jumpInputRef = useRef<HTMLInputElement>(null);
   const [reviewHistory, setReviewHistory] = useState<ReviewHistoryItem[]>([]);
   const [stats, setStats] = useState<UserStats>(initialStats);
   const [loading, setLoading] = useState(true);
@@ -72,6 +91,20 @@ function ReviewContent() {
       }
     }
     setIsShareModalOpen(true);
+  };
+
+  const handleOpenJumpModal = (e?: React.MouseEvent) => {
+    if (e && (e.clientX !== 0 || e.clientY !== 0)) {
+      setJumpOrigin({ x: e.clientX, y: e.clientY });
+    } else {
+      const rect = (e?.currentTarget as HTMLElement)?.getBoundingClientRect?.();
+      if (rect) {
+        setJumpOrigin({ x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 });
+      } else {
+        setJumpOrigin(null);
+      }
+    }
+    setIsJumpModalOpen(true);
   };
   const lastActionTimestamp = useRef<number>(0);
 
@@ -100,23 +133,50 @@ function ReviewContent() {
 
   const activeDeck = decks.find((d) => d.id === selectedDeckId);
 
-  // Compute active study cards & shuffle status
+  // Auto-hydrate deck set division configuration from saved deck
   useEffect(() => {
-    const baseCards = selectedDeckId === "all"
+    if (activeDeck?.setDivision) {
+      setSetDivisionConfig(activeDeck.setDivision);
+    } else {
+      setSetDivisionConfig({
+        enabled: false,
+        mode: "count",
+        value: 1,
+        namingStyle: "letters",
+      });
+    }
+    setActiveSetIndex(0);
+  }, [selectedDeckId, activeDeck]);
+
+  const rawDeckCards = useMemo(() => {
+    return selectedDeckId === "all"
       ? allCards
       : activeDeck ? activeDeck.cards : allCards;
+  }, [selectedDeckId, activeDeck, allCards]);
 
+  const deckSets: DeckCardSet[] = useMemo(() => {
+    return divideCardsIntoSets(rawDeckCards, setDivisionConfig, setDivisionConfig.namingStyle);
+  }, [rawDeckCards, setDivisionConfig]);
+
+  const activeSet = deckSets[activeSetIndex] || deckSets[0];
+  const setCards = useMemo(() => {
+    return activeSet ? activeSet.cards : rawDeckCards;
+  }, [activeSet, rawDeckCards]);
+
+  // Compute active study cards & shuffle status
+  useEffect(() => {
     const shouldShuffle = activeDeck?.shuffleQuestions ?? isShuffleActive;
     setIsShuffleActive(shouldShuffle);
 
     if (shouldShuffle) {
-      setActiveCards(shuffleArray(baseCards));
+      setActiveCards(shuffleArray(setCards));
     } else {
-      setActiveCards(baseCards);
+      setActiveCards(setCards);
     }
     setCurrentIndex(0);
     setReviewHistory([]);
-  }, [selectedDeckId, activeDeck, allCards]);
+    setJumpInput("1");
+  }, [selectedDeckId, activeDeck, setCards]);
 
   const handleToggleShuffle = () => {
     const nextShuffle = !isShuffleActive;
@@ -131,10 +191,7 @@ function ReviewContent() {
     if (nextShuffle) {
       newCardList = shuffleArray(activeCards);
     } else {
-      const baseCards = selectedDeckId === "all"
-        ? allCards
-        : activeDeck ? activeDeck.cards : allCards;
-      newCardList = baseCards;
+      newCardList = setCards;
     }
 
     setActiveCards(newCardList);
@@ -160,12 +217,36 @@ function ReviewContent() {
 
   const handleSelectDeck = (deckId: string) => {
     setSelectedDeckId(deckId);
+    setCardDirection("pop");
+    const targetDeck = decks.find((d) => d.id === deckId);
+    if (targetDeck?.setDivision) {
+      setSetDivisionConfig(targetDeck.setDivision);
+    } else {
+      setSetDivisionConfig({
+        enabled: false,
+        mode: "count",
+        value: 1,
+        namingStyle: "letters",
+      });
+    }
+    setActiveSetIndex(0);
     setCurrentIndex(0);
     setReviewHistory([]);
+    setJumpInput("1");
     if (deckId === "all") {
       router.push("/review");
     } else {
       router.push(`/review?deckId=${deckId}`);
+    }
+  };
+
+  const handleAdvanceToNextSet = () => {
+    if (activeSetIndex < deckSets.length - 1) {
+      setCardDirection("pop");
+      setActiveSetIndex((prev) => prev + 1);
+      setCurrentIndex(0);
+      setReviewHistory([]);
+      setJumpInput("1");
     }
   };
 
@@ -218,6 +299,7 @@ function ReviewContent() {
     ]);
 
     // 2. INSTANT OPTIMISTIC ADVANCE (0ms perceived latency):
+    setCardDirection(remembered ? "mastered" : "review");
     setCurrentIndex((prev) => {
       if (activeCards.length <= 1) return 0;
       return (prev + 1) % activeCards.length;
@@ -258,6 +340,7 @@ function ReviewContent() {
     const now = Date.now();
     if (now - lastActionTimestamp.current < 100) return;
     lastActionTimestamp.current = now;
+    setCardDirection("prev");
 
     if (reviewHistory.length > 0) {
       const lastItem = reviewHistory[reviewHistory.length - 1];
@@ -298,6 +381,7 @@ function ReviewContent() {
     const cardToSkip = activeCards[currentIndex];
     if (!cardToSkip || activeCards.length <= 1) return;
 
+    setCardDirection("next");
     setReviewHistory((prev) => [
       ...prev,
       {
@@ -312,9 +396,57 @@ function ReviewContent() {
 
   const canGoPrevious = reviewHistory.length > 0 || currentIndex > 0;
 
+  // Sync jump input with currentIndex
+  useEffect(() => {
+    setJumpInput(String(currentIndex + 1));
+  }, [currentIndex]);
+
+  const handleJumpToCard = useCallback(
+    (targetPage: number) => {
+      if (activeCards.length === 0) return;
+      const clamped = Math.max(1, Math.min(activeCards.length, Math.floor(targetPage)));
+      const targetIndex = clamped - 1;
+
+      if (targetIndex !== currentIndex) {
+        setCardDirection(targetIndex > currentIndex ? "next" : targetIndex < currentIndex ? "prev" : "pop");
+        const cardToSkip = activeCards[currentIndex];
+        if (cardToSkip) {
+          setReviewHistory((prev) => [
+            ...prev,
+            {
+              index: currentIndex,
+              cardId: cardToSkip.id,
+              rated: false,
+            },
+          ]);
+        }
+        setCurrentIndex(targetIndex);
+      }
+      setJumpInput(String(clamped));
+    },
+    [activeCards, currentIndex]
+  );
+
+  const handleJumpSubmit = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const val = parseInt(jumpInput.trim(), 10);
+    if (!isNaN(val)) {
+      handleJumpToCard(val);
+    } else {
+      setJumpInput(String(currentIndex + 1));
+    }
+    jumpInputRef.current?.blur();
+  };
+
   // Keyboard navigation shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && isJumpModalOpen) {
+        e.preventDefault();
+        setIsJumpModalOpen(false);
+        return;
+      }
+
       const tag = (document.activeElement?.tagName || "").toLowerCase();
       if (
         tag === "input" ||
@@ -338,12 +470,26 @@ function ReviewContent() {
       } else if (e.key === "2") {
         e.preventDefault();
         handleReview(false);
+      } else if (e.key === "j" || e.key === "J" || e.key === "g" || e.key === "G") {
+        e.preventDefault();
+        jumpInputRef.current?.focus();
+        jumpInputRef.current?.select();
       }
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [canGoPrevious, handlePreviousCard, handleSkipCard, handleReview]);
+  }, [canGoPrevious, handlePreviousCard, handleSkipCard, handleReview, isJumpModalOpen]);
+
+  const reviewedCardMap = useMemo(() => {
+    const map = new Map<string, { remembered: boolean }>();
+    for (const item of reviewHistory) {
+      if (item.rated && item.remembered !== undefined) {
+        map.set(item.cardId, { remembered: item.remembered });
+      }
+    }
+    return map;
+  }, [reviewHistory]);
 
   if (loading) {
     return (
@@ -373,6 +519,19 @@ function ReviewContent() {
             selectedDeckId={selectedDeckId}
             onSelectDeck={handleSelectDeck}
             totalCardsCount={allCards.length}
+          />
+
+          {/* Deck Set Divider & Selector */}
+          <DeckSetSelector
+            cards={rawDeckCards}
+            config={setDivisionConfig}
+            activeSetIndex={activeSetIndex}
+            onConfigChange={(newCfg) => {
+              setSetDivisionConfig(newCfg);
+              setActiveSetIndex(0);
+            }}
+            onActiveSetChange={(idx) => setActiveSetIndex(idx)}
+            modeLabel="Review"
           />
 
           {/* Shuffle Questions Toggle Button */}
@@ -436,16 +595,70 @@ function ReviewContent() {
       ) : (
         <div className="rounded-[2.5rem] border border-slate-800 bg-slate-900/60 p-5 shadow-2xl shadow-slate-950/40 sm:p-8">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <div className="flex items-center gap-2 text-xs uppercase tracking-[0.2em] text-slate-400">
-                <span className="h-2 w-2 rounded-full bg-cyan-400" />
-                Card {currentIndex + 1} of {activeCards.length}
-                {isShuffleActive && (
-                  <span className="text-[10px] text-cyan-400 bg-cyan-500/10 px-2 py-0.5 rounded-md border border-cyan-500/20">
-                    🔀 Shuffled
-                  </span>
-                )}
-              </div>
+            <div className="flex flex-wrap items-center gap-2.5">
+              {/* Interactive Page Number & Direct Jump Form */}
+              <form
+                onSubmit={handleJumpSubmit}
+                className="group flex items-center gap-1.5 rounded-xl border border-slate-700/80 bg-slate-950/90 px-3 py-1.5 text-xs text-slate-400 focus-within:border-cyan-400 focus-within:ring-2 focus-within:ring-cyan-400/30 transition-all shadow-inner"
+              >
+                <span className="h-2 w-2 rounded-full bg-cyan-400 animate-pulse shrink-0" />
+                <label
+                  htmlFor="review-card-number-input"
+                  className="font-semibold uppercase tracking-wider text-[11px] text-slate-400 select-none cursor-pointer"
+                  title="Click or press J to jump to any card"
+                >
+                  Card
+                </label>
+                <input
+                  id="review-card-number-input"
+                  ref={jumpInputRef}
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  value={jumpInput}
+                  onChange={(e) => {
+                    const val = e.target.value.replace(/[^0-9]/g, "");
+                    setJumpInput(val);
+                  }}
+                  onFocus={(e) => e.target.select()}
+                  onBlur={() => {
+                    const val = parseInt(jumpInput.trim(), 10);
+                    if (!isNaN(val) && val >= 1 && val <= activeCards.length) {
+                      handleJumpToCard(val);
+                    } else {
+                      setJumpInput(String(currentIndex + 1));
+                    }
+                  }}
+                  className="w-12 rounded-md bg-slate-900 px-1 py-0.5 text-center font-mono text-xs font-bold text-cyan-300 border border-slate-700 focus:border-cyan-400 focus:bg-slate-800 focus:outline-none"
+                  title={`Enter card number (1-${activeCards.length}) and press Enter to jump`}
+                  placeholder={String(currentIndex + 1)}
+                  aria-label="Enter card number to jump"
+                />
+                <span className="text-slate-400 font-medium text-[11px] select-none">
+                  of {activeCards.length}
+                </span>
+
+                {jumpInput !== "" &&
+                  parseInt(jumpInput, 10) !== currentIndex + 1 &&
+                  !isNaN(parseInt(jumpInput, 10)) &&
+                  parseInt(jumpInput, 10) >= 1 &&
+                  parseInt(jumpInput, 10) <= activeCards.length && (
+                    <button
+                      type="submit"
+                      className="ml-1 inline-flex items-center gap-0.5 rounded-md bg-cyan-500/20 px-2 py-0.5 text-[10px] font-bold text-cyan-300 hover:bg-cyan-500 hover:text-slate-950 transition cursor-pointer"
+                      title="Jump to this card number"
+                    >
+                      Go ↵
+                    </button>
+                  )}
+              </form>
+
+              {/* Shuffled badge */}
+              {isShuffleActive && (
+                <span className="text-[10px] text-cyan-400 bg-cyan-500/10 px-2.5 py-1 rounded-lg border border-cyan-500/20 font-medium select-none">
+                  🔀 Shuffled
+                </span>
+              )}
 
               {/* Quick Stepper */}
               <div className="flex items-center gap-1">
@@ -454,7 +667,7 @@ function ReviewContent() {
                   onClick={handlePreviousCard}
                   disabled={!canGoPrevious}
                   title="Previous card (Left Arrow or P)"
-                  className="inline-flex items-center gap-1 rounded-lg border border-slate-700/80 bg-slate-950/80 px-2.5 py-1 text-xs font-semibold text-slate-300 hover:border-cyan-500/40 hover:text-white disabled:opacity-30 disabled:pointer-events-none transition cursor-pointer"
+                  className="inline-flex items-center gap-1 rounded-lg border border-slate-700/80 bg-slate-950/80 px-2.5 py-1.5 text-xs font-semibold text-slate-300 hover:border-cyan-500/40 hover:text-white disabled:opacity-30 disabled:pointer-events-none transition cursor-pointer"
                 >
                   <ChevronLeft size={14} />
                   <span className="hidden xs:inline">Prev</span>
@@ -463,12 +676,23 @@ function ReviewContent() {
                   type="button"
                   onClick={handleSkipCard}
                   title="Skip to next card (Right Arrow)"
-                  className="inline-flex items-center gap-1 rounded-lg border border-slate-700/80 bg-slate-950/80 px-2.5 py-1 text-xs font-semibold text-slate-300 hover:border-cyan-500/40 hover:text-white transition cursor-pointer"
+                  className="inline-flex items-center gap-1 rounded-lg border border-slate-700/80 bg-slate-950/80 px-2.5 py-1.5 text-xs font-semibold text-slate-300 hover:border-cyan-500/40 hover:text-white transition cursor-pointer"
                 >
                   <span className="hidden xs:inline">Next</span>
                   <ChevronRight size={14} />
                 </button>
               </div>
+
+              {/* Browse All Cards / Jump Modal Button */}
+              <button
+                type="button"
+                onClick={(e) => handleOpenJumpModal(e)}
+                title="Browse all cards or jump to a card by title/number"
+                className="group inline-flex items-center gap-1.5 rounded-lg border border-slate-700/80 bg-slate-950/80 px-2.5 py-1.5 text-xs font-semibold text-slate-300 hover:border-cyan-500/40 hover:text-cyan-300 hover:bg-slate-900 transition-all active:scale-95 cursor-pointer shadow-sm"
+              >
+                <ListOrdered size={14} className="text-cyan-400 group-hover:scale-110 transition-transform duration-200" />
+                <span className="hidden sm:inline">Jump / List</span>
+              </button>
             </div>
 
             {currentCard && (
@@ -479,7 +703,24 @@ function ReviewContent() {
           </div>
 
           <div className="mx-auto flex max-w-2xl flex-col items-center gap-6">
-            {currentCard && <FlashcardCard card={currentCard} />}
+            {currentCard && (
+              <div
+                key={`${currentCard.id}-${currentIndex}`}
+                className={`w-full ${
+                  cardDirection === "mastered"
+                    ? "animate-deck-mastered"
+                    : cardDirection === "review"
+                    ? "animate-deck-review"
+                    : cardDirection === "prev"
+                    ? "animate-deck-prev"
+                    : cardDirection === "next"
+                    ? "animate-deck-next"
+                    : "animate-deck-pop"
+                }`}
+              >
+                <FlashcardCard card={currentCard} />
+              </div>
+            )}
 
             {/* AI Tutor Quick Actions for Active Card */}
             {currentCard && (
@@ -586,6 +827,9 @@ Question: "${currentCard.question}" -> Answer: "${currentCard.answer}"
 
                 <div className="hidden sm:flex items-center gap-2 text-[11px] text-slate-500">
                   <span>Hotkeys:</span>
+                  <span className="rounded bg-slate-950 px-1.5 py-0.5 text-[10px] text-cyan-400/90 border border-slate-800">
+                    J Jump #
+                  </span>
                   <span className="rounded bg-slate-950 px-1.5 py-0.5 text-[10px] text-slate-400 border border-slate-800">
                     ← Prev
                   </span>
@@ -613,10 +857,50 @@ Question: "${currentCard.question}" -> Answer: "${currentCard.answer}"
                   </kbd>
                 </button>
               </div>
+
+              {/* Next Set Advancement Banner */}
+              {currentIndex === activeCards.length - 1 && setDivisionConfig.enabled && deckSets.length > 1 && activeSetIndex < deckSets.length - 1 && (
+                <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-cyan-500/40 bg-cyan-950/40 p-4 shadow-lg animate-in fade-in slide-in-from-bottom-2">
+                  <div className="flex items-center gap-2.5">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-cyan-500/20 text-cyan-300 shrink-0">
+                      <CheckCircle2 size={18} />
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold text-white">Finished {activeSet.setName} of {deckSets.length}! 🎉</p>
+                      <p className="text-[11px] text-cyan-300/80">
+                        Next up: {deckSets[activeSetIndex + 1]?.setName} ({deckSets[activeSetIndex + 1]?.cardCount} cards)
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleAdvanceToNextSet}
+                    className="inline-flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-cyan-500 to-teal-400 px-4 py-2 text-xs font-bold text-slate-950 hover:brightness-110 transition cursor-pointer active:scale-95 shadow-md shadow-cyan-500/20"
+                  >
+                    <span>Start {deckSets[activeSetIndex + 1]?.setName}</span>
+                    <ChevronRight size={14} />
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </div>
       )}
+
+      {/* CARD JUMP & DECK OVERVIEW MODAL WITH SPRING POPUP ANIMATION */}
+      <JumpCardModal
+        isOpen={isJumpModalOpen}
+        origin={jumpOrigin}
+        onClose={() => {
+          setIsJumpModalOpen(false);
+          setJumpOrigin(null);
+        }}
+        cards={activeCards}
+        currentIndex={currentIndex}
+        deckTitle={activeDeck?.title}
+        onJump={handleJumpToCard}
+        reviewedCardIds={reviewedCardMap}
+      />
 
       {activeDeck && (
         <ShareDeckModal

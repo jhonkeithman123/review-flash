@@ -7,6 +7,7 @@ import {
   AlertCircle,
   ArrowLeft,
   ArrowRight,
+  Award,
   Bookmark,
   BookOpen,
   BrainCircuit,
@@ -16,8 +17,11 @@ import {
   Clock,
   ExternalLink,
   Flame,
+  Folder,
   Gauge,
   HelpCircle,
+  History,
+  Layers,
   ListOrdered,
   Plus,
   RotateCcw,
@@ -25,6 +29,7 @@ import {
   SlidersHorizontal,
   Sparkles,
   Timer,
+  Trophy,
   X,
   XCircle,
   Zap,
@@ -32,14 +37,36 @@ import {
 import { QuizQuestion } from "@/components/quiz-question";
 import { ProgressStats } from "@/components/progress-stats";
 import { DeckSelector } from "@/components/deck-selector";
+import { DeckSetSelector } from "@/components/deck-set-selector";
+import { TestHistoryModal } from "@/components/test-history-modal";
 import {
+  clearActiveTestState,
+  fetchActiveTestState,
   fetchDecks,
   fetchFlashcards,
   fetchUserStats,
   recordTestSession,
+  saveActiveTestState,
+  saveTestRecord,
   shuffleArray,
 } from "@/lib/flashcardService";
-import { Deck, Flashcard, QuizQuestionItem, UserStats } from "@/types/flashcard";
+import { divideCardsIntoSets } from "@/lib/setDivider";
+import {
+  generateBatchSmartDistractorsWithAI,
+  generateHeuristicSmartDistractors,
+  generateSmartDistractorsWithAI,
+} from "@/lib/ditroy";
+import {
+  ActiveTestState,
+  Deck,
+  DeckCardSet,
+  DeckScoreBreakdown,
+  DeckSetDivisionConfig,
+  Flashcard,
+  QuizQuestionItem,
+  TestRecord,
+  UserStats,
+} from "@/types/flashcard";
 
 const initialStats: UserStats = {
   reviewed: 0,
@@ -50,87 +77,46 @@ const initialStats: UserStats = {
 };
 
 /**
- * Builds quiz questions with smart & adaptive distractor selection.
- * When adaptiveBoost > 0, distractor selection favors semantically close/matching
- * cards to create more nuanced, plausible, and challenging multiple-choice options.
+ * Builds stable quiz questions with intelligent, logically relative distractors.
+ * Distractor order is generated once per take and remains completely static during answering.
  */
-function buildAdaptiveQuizQuestions(
+function buildStableQuizQuestions(
   cards: Flashcard[],
   allPool: Flashcard[],
   questionCountLimit?: number,
-  adaptiveBoost: number = 0
+  adaptiveLevel: number = 1
 ): QuizQuestionItem[] {
   if (!cards.length) return [];
-  const pool = cards.length >= 4 ? cards : allPool.length >= 4 ? allPool : cards;
-
-  const baseCards = [...cards];
   const targetCards =
     questionCountLimit && questionCountLimit > 0
-      ? baseCards.slice(0, questionCountLimit)
-      : baseCards;
+      ? cards.slice(0, questionCountLimit)
+      : cards;
 
   return targetCards.map((card) => {
-    // 1. Gather all candidates excluding exact same answer
-    const candidates = pool.filter(
-      (c) =>
-        c.id !== card.id &&
-        c.answer.trim().toLowerCase() !== card.answer.trim().toLowerCase()
-    );
-
-    // 2. Score candidates by similarity/plausibility
-    const scoredCandidates = candidates.map((cand) => {
-      let score = Math.random();
-
-      if (adaptiveBoost > 0) {
-        // Tag overlap
-        const sharedTags = (cand.tags || []).filter((t) =>
-          (card.tags || []).includes(t)
-        ).length;
-        score += sharedTags * 2.5 * (adaptiveBoost / 100);
-
-        // Closeness in difficulty
-        const diffDelta = Math.abs((cand.difficulty || 3) - (card.difficulty || 3));
-        score += (5 - diffDelta) * 0.8 * (adaptiveBoost / 100);
-
-        // Similar answer text length
-        const lenDelta = Math.abs(cand.answer.length - card.answer.length);
-        if (lenDelta < 18) {
-          score += 1.5 * (adaptiveBoost / 100);
+    // 1. Check if cached AI distractors exist for this card & adaptive level
+    let distractorAnswers: string[] = [];
+    if (typeof window !== "undefined") {
+      try {
+        const cached = localStorage.getItem(`rf_ai_dist_${card.id}_${adaptiveLevel}`);
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed) && parsed.length >= 3) {
+            distractorAnswers = parsed
+              .map((s) => String(s).trim())
+              .filter((s) => s.length > 0 && s.toLowerCase() !== card.answer.trim().toLowerCase())
+              .slice(0, 3);
+          }
         }
-      }
-
-      return { answer: cand.answer, score };
-    });
-
-    // Sort by plausibility score descending
-    scoredCandidates.sort((a, b) => b.score - a.score);
-
-    const distractorAnswers: string[] = [];
-    for (const cand of scoredCandidates) {
-      if (!distractorAnswers.includes(cand.answer) && cand.answer !== card.answer) {
-        distractorAnswers.push(cand.answer);
-      }
-      if (distractorAnswers.length >= 3) break;
+      } catch {}
     }
 
-    // Generic distractors fallback if deck is small
-    const genericFallbacks = [
-      "Complementary secondary principle",
-      "Inverse execution pattern",
-      "Context-dependent edge case",
-      "Alternate standard convention",
-    ];
-    let fallbackIndex = 0;
-    while (distractorAnswers.length < 3) {
-      const fallback = genericFallbacks[fallbackIndex % genericFallbacks.length];
-      if (!distractorAnswers.includes(fallback) && fallback !== card.answer) {
-        distractorAnswers.push(fallback);
-      }
-      fallbackIndex++;
+    // 2. Fallback to smart heuristic generator (detects keys, ports, HTTP codes, numbers, tags, etc.)
+    if (distractorAnswers.length < 3) {
+      distractorAnswers = generateHeuristicSmartDistractors(card, allPool, adaptiveLevel);
     }
 
     const options = [card.answer, ...distractorAnswers.slice(0, 3)];
-    const shuffled = [...options].sort(() => Math.random() - 0.5);
+    const shuffled = shuffleArray(options);
     const correctIndex = shuffled.indexOf(card.answer);
 
     return {
@@ -149,6 +135,13 @@ function TestContent() {
   const [decks, setDecks] = useState<Deck[]>([]);
   const [selectedDeckId, setSelectedDeckId] = useState<string>(initialDeckParam);
   const [allCards, setAllCards] = useState<Flashcard[]>([]);
+  const [setDivisionConfig, setSetDivisionConfig] = useState<DeckSetDivisionConfig>({
+    enabled: false,
+    mode: "count",
+    value: 1,
+    namingStyle: "letters",
+  });
+  const [activeSetIndex, setActiveSetIndex] = useState<number>(0);
   const [stats, setStats] = useState<UserStats>(initialStats);
   const [isShuffleActive, setIsShuffleActive] = useState<boolean>(() => {
     if (typeof window === "undefined") return false;
@@ -159,15 +152,24 @@ function TestContent() {
     }
   });
   const [questionIndex, setQuestionIndex] = useState(0);
+  const [questionDirection, setQuestionDirection] = useState<"next" | "prev" | "jump">("jump");
   const [userAnswers, setUserAnswers] = useState<Record<number, string>>({});
   const [flaggedQuestions, setFlaggedQuestions] = useState<Set<number>>(new Set());
   const [questionCountPreset, setQuestionCountPreset] = useState<string>("all");
   const [isUntimed, setIsUntimed] = useState<boolean>(false);
+  const [questions, setQuestions] = useState<QuizQuestionItem[]>([]);
+  const [adaptiveStreak, setAdaptiveStreak] = useState<number>(0);
+  const [adaptivePeak, setAdaptivePeak] = useState<number>(0);
+  const [isGeneratingAiDistractors, setIsGeneratingAiDistractors] = useState<boolean>(false);
   const [timeLeft, setTimeLeft] = useState<number>(180);
   const [isOverviewDrawerOpen, setIsOverviewDrawerOpen] = useState(false);
   const [overviewFilter, setOverviewFilter] = useState<"all" | "unanswered" | "answered" | "flagged">("all");
   const [isConfirmSubmitOpen, setIsConfirmSubmitOpen] = useState(false);
   const [autoAdvance, setAutoAdvance] = useState(true);
+  const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
+  const [historyOrigin, setHistoryOrigin] = useState<{ x: number; y: number } | null>(null);
+  const [hasResumedState, setHasResumedState] = useState(false);
+  const [currentTestRecord, setCurrentTestRecord] = useState<TestRecord | null>(null);
   const [results, setResults] = useState<{
     correct: number;
     total: number;
@@ -178,6 +180,20 @@ function TestContent() {
 
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const navScrollRef = useRef<HTMLDivElement>(null);
+
+  const handleOpenHistoryModal = (e?: React.MouseEvent) => {
+    if (e && (e.clientX !== 0 || e.clientY !== 0)) {
+      setHistoryOrigin({ x: e.clientX, y: e.clientY });
+    } else {
+      const rect = (e?.currentTarget as HTMLElement)?.getBoundingClientRect?.();
+      if (rect) {
+        setHistoryOrigin({ x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 });
+      } else {
+        setHistoryOrigin(null);
+      }
+    }
+    setIsHistoryModalOpen(true);
+  };
 
   useEffect(() => {
     async function loadData() {
@@ -201,17 +217,35 @@ function TestContent() {
   }, [searchParams]);
 
   const activeDeck = decks.find((d) => d.id === selectedDeckId);
-  const filteredCards = useMemo(() => {
+
+  // Auto-hydrate deck set division configuration from saved deck
+  useEffect(() => {
+    if (activeDeck?.setDivision) {
+      setSetDivisionConfig(activeDeck.setDivision);
+    } else {
+      setSetDivisionConfig({
+        enabled: false,
+        mode: "count",
+        value: 1,
+        namingStyle: "letters",
+      });
+    }
+    setActiveSetIndex(0);
+  }, [selectedDeckId, activeDeck]);
+
+  const rawDeckCards = useMemo(() => {
     if (selectedDeckId === "all") return allCards;
     return activeDeck ? activeDeck.cards : allCards;
   }, [selectedDeckId, activeDeck, allCards]);
 
-  const activeOrderedCards = useMemo(() => {
-    if (isShuffleActive) {
-      return shuffleArray([...filteredCards]);
-    }
-    return filteredCards;
-  }, [filteredCards, isShuffleActive]);
+  const deckSets: DeckCardSet[] = useMemo(() => {
+    return divideCardsIntoSets(rawDeckCards, setDivisionConfig, setDivisionConfig.namingStyle);
+  }, [rawDeckCards, setDivisionConfig]);
+
+  const activeSet = deckSets[activeSetIndex] || deckSets[0];
+  const filteredCards = useMemo(() => {
+    return activeSet ? activeSet.cards : rawDeckCards;
+  }, [activeSet, rawDeckCards]);
 
   // Compute question limit integer
   const questionCountLimit = useMemo(() => {
@@ -220,27 +254,227 @@ function TestContent() {
     return isNaN(parsed) ? undefined : parsed;
   }, [questionCountPreset]);
 
-  // Dynamic Adaptive Difficulty calculation based on correct answers so far
-  // Increases +5% per correct answer, capped at 70%
+  // Adaptive difficulty tier: Level 1 (0-1 streak), Level 2 (2-3 streak), Level 3 (4+ streak)
+  const currentAdaptiveLevel = useMemo(() => {
+    if (adaptiveStreak >= 4) return 3;
+    if (adaptiveStreak >= 2) return 2;
+    return 1;
+  }, [adaptiveStreak]);
+
+  // Dynamic Adaptive Difficulty percentage boost calculation based on correct answers and peak streak
   const currentAdaptiveBoost = useMemo(() => {
     let correctCount = 0;
-    // Calculate how many answered questions are correct
     for (const [idxStr, selected] of Object.entries(userAnswers)) {
       const idx = Number(idxStr);
-      // We will match against card answer
-      const card = activeOrderedCards[idx];
-      if (card && card.answer.trim().toLowerCase() === selected.trim().toLowerCase()) {
+      const q = questions[idx];
+      if (q && q.card.answer.trim().toLowerCase() === selected.trim().toLowerCase()) {
         correctCount += 1;
       }
     }
-    return Math.min(70, correctCount * 5);
-  }, [userAnswers, activeOrderedCards]);
+    const streakBonus = adaptiveStreak * 10;
+    return Math.min(70, correctCount * 5 + streakBonus);
+  }, [userAnswers, questions, adaptiveStreak]);
 
-  // Build Quiz Questions based on selected deck & count limit (ALL cards by default!)
-  const questions = useMemo(
-    () => buildAdaptiveQuizQuestions(activeOrderedCards, allCards, questionCountLimit, currentAdaptiveBoost),
-    [activeOrderedCards, allCards, questionCountLimit, currentAdaptiveBoost]
-  );
+  // Check and restore active in-progress test or build fresh quiz questions
+  useEffect(() => {
+    if (!filteredCards.length || loading) {
+      if (!loading && !filteredCards.length) setQuestions([]);
+      return;
+    }
+
+    let isMounted = true;
+
+    async function initQuizQuestions() {
+      // 1. Check if there is an active saved in-progress test for this deck
+      const savedState = await fetchActiveTestState(selectedDeckId);
+      if (
+        isMounted &&
+        savedState &&
+        Array.isArray(savedState.questions) &&
+        savedState.questions.length > 0 &&
+        savedState.deckId === selectedDeckId
+      ) {
+        setQuestions(savedState.questions);
+        setQuestionIndex(savedState.questionIndex || 0);
+        setUserAnswers(savedState.userAnswers || {});
+        setFlaggedQuestions(new Set(savedState.flaggedIndices || []));
+        setTimeLeft(
+          savedState.timeLeft !== undefined
+            ? savedState.timeLeft
+            : Math.max(60, savedState.questions.length * 30)
+        );
+        setIsUntimed(savedState.isUntimed || false);
+        setIsShuffleActive(savedState.isShuffleActive || false);
+        setAdaptiveStreak(savedState.adaptiveStreak || 0);
+        setAdaptivePeak(savedState.adaptivePeak || 0);
+        setQuestionCountPreset(savedState.questionCountPreset || "all");
+        setHasResumedState(true);
+        return;
+      }
+
+      // 2. Otherwise generate fresh quiz questions
+      if (isMounted) {
+        const baseCards = isShuffleActive ? shuffleArray([...filteredCards]) : [...filteredCards];
+        const initialQs = buildStableQuizQuestions(baseCards, allCards, questionCountLimit, currentAdaptiveLevel);
+        setQuestions(initialQs);
+        setQuestionIndex(0);
+        setUserAnswers({});
+        setFlaggedQuestions(new Set());
+        setAdaptiveStreak(0);
+        setAdaptivePeak(0);
+        setTimeLeft(Math.max(60, initialQs.length * 30));
+        setHasResumedState(false);
+      }
+    }
+
+    initQuizQuestions();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [selectedDeckId, isShuffleActive, questionCountPreset, loading, filteredCards.length, setDivisionConfig, activeSetIndex]);
+
+  const timeLeftRef = useRef<number>(timeLeft);
+  useEffect(() => {
+    timeLeftRef.current = timeLeft;
+  }, [timeLeft]);
+
+  // Auto-save active test in-progress state to local storage & database (debounced to protect write stream)
+  useEffect(() => {
+    if (loading || results.submitted || !questions.length) return;
+
+    const hasAnswers = Object.keys(userAnswers).length > 0;
+    const hasFlags = flaggedQuestions.size > 0;
+    if (!hasAnswers && !hasFlags && questionIndex === 0) return;
+
+    const stateToSave: ActiveTestState = {
+      deckId: selectedDeckId,
+      questionIndex,
+      questions,
+      userAnswers,
+      flaggedIndices: Array.from(flaggedQuestions),
+      timeLeft: timeLeftRef.current,
+      isUntimed,
+      isShuffleActive,
+      adaptiveStreak,
+      adaptivePeak,
+      questionCountPreset,
+      lastUpdated: Date.now(),
+    };
+
+    saveActiveTestState(stateToSave);
+  }, [
+    selectedDeckId,
+    questionIndex,
+    questions,
+    userAnswers,
+    flaggedQuestions,
+    isUntimed,
+    isShuffleActive,
+    adaptiveStreak,
+    adaptivePeak,
+    questionCountPreset,
+    loading,
+    results.submitted,
+  ]);
+
+  // Save current progress on page unload
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      if (!loading && !results.submitted && questions.length > 0) {
+        const hasAnswers = Object.keys(userAnswers).length > 0;
+        const hasFlags = flaggedQuestions.size > 0;
+        if (hasAnswers || hasFlags || questionIndex > 0) {
+          saveActiveTestState({
+            deckId: selectedDeckId,
+            questionIndex,
+            questions,
+            userAnswers,
+            flaggedIndices: Array.from(flaggedQuestions),
+            timeLeft: timeLeftRef.current,
+            isUntimed,
+            isShuffleActive,
+            adaptiveStreak,
+            adaptivePeak,
+            questionCountPreset,
+            lastUpdated: Date.now(),
+          });
+        }
+      }
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [
+    selectedDeckId,
+    questionIndex,
+    questions,
+    userAnswers,
+    flaggedQuestions,
+    isUntimed,
+    isShuffleActive,
+    adaptiveStreak,
+    adaptivePeak,
+    questionCountPreset,
+    loading,
+    results.submitted,
+  ]);
+
+  // Asynchronous background enrichment with DITroy AI Smart Distractors
+  useEffect(() => {
+    let mounted = true;
+    if (!questions.length || loading) return;
+
+    const uncachedCards = questions
+      .map((q) => q.card)
+      .filter((card) => {
+        if (typeof window === "undefined") return false;
+        try {
+          return !localStorage.getItem(`rf_ai_dist_${card.id}_${currentAdaptiveLevel}`);
+        } catch {
+          return true;
+        }
+      });
+
+    if (uncachedCards.length === 0) return;
+
+    setIsGeneratingAiDistractors(true);
+    generateBatchSmartDistractorsWithAI(uncachedCards, {
+      difficultyLevel: currentAdaptiveLevel,
+      deckTitle: activeDeck?.title,
+      poolCards: allCards,
+    })
+      .then((distractorMap) => {
+        if (!mounted) return;
+        setIsGeneratingAiDistractors(false);
+
+        setQuestions((prevQuestions) => {
+          return prevQuestions.map((q, idx) => {
+            // NEVER alter questions already answered by user
+            if (userAnswers[idx] !== undefined) return q;
+
+            const aiDistractors = distractorMap[q.card.id];
+            if (aiDistractors && aiDistractors.length >= 3) {
+              const options = [q.card.answer, ...aiDistractors.slice(0, 3)];
+              const shuffled = shuffleArray(options);
+              return {
+                ...q,
+                options: shuffled,
+                correctIndex: shuffled.indexOf(q.card.answer),
+              };
+            }
+            return q;
+          });
+        });
+      })
+      .catch(() => {
+        if (mounted) setIsGeneratingAiDistractors(false);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [selectedDeckId, questionCountLimit, isShuffleActive, loading]);
 
   const currentQuestion = questions[questionIndex];
 
@@ -266,7 +500,6 @@ function TestContent() {
   // Set time limit dynamically when questions or time mode change
   useEffect(() => {
     if (questions.length > 0) {
-      // 30 seconds per question (min 60 seconds)
       const allocatedSeconds = Math.max(60, questions.length * 30);
       setTimeLeft(allocatedSeconds);
     }
@@ -307,15 +540,67 @@ function TestContent() {
 
   const handleSelectDeck = (deckId: string) => {
     setSelectedDeckId(deckId);
+    setQuestionDirection("jump");
+    const targetDeck = decks.find((d) => d.id === deckId);
+    if (targetDeck?.setDivision) {
+      setSetDivisionConfig(targetDeck.setDivision);
+    } else {
+      setSetDivisionConfig({
+        enabled: false,
+        mode: "count",
+        value: 1,
+        namingStyle: "letters",
+      });
+    }
+    setActiveSetIndex(0);
     setQuestionIndex(0);
     setUserAnswers({});
     setFlaggedQuestions(new Set());
+    setAdaptiveStreak(0);
+    setAdaptivePeak(0);
     setResults({ correct: 0, total: 0, submitted: false, adaptivePeak: 0 });
+    setCurrentTestRecord(null);
+    setHasResumedState(false);
     if (deckId === "all") {
       router.push("/test");
     } else {
       router.push(`/test?deckId=${deckId}`);
     }
+  };
+
+  const handleStartFreshQuiz = async () => {
+    await clearActiveTestState(selectedDeckId);
+    setHasResumedState(false);
+    const baseCards = isShuffleActive ? shuffleArray([...filteredCards]) : [...filteredCards];
+    const freshQuestions = buildStableQuizQuestions(baseCards, allCards, questionCountLimit, 1);
+    setQuestions(freshQuestions);
+    setQuestionIndex(0);
+    setUserAnswers({});
+    setFlaggedQuestions(new Set());
+    setAdaptiveStreak(0);
+    setAdaptivePeak(0);
+    setResults({ correct: 0, total: 0, submitted: false, adaptivePeak: 0 });
+    setCurrentTestRecord(null);
+    setTimeLeft(Math.max(60, freshQuestions.length * 30));
+  };
+
+  const handleRetakeMissedQuestions = () => {
+    if (!currentTestRecord?.missedCardIds || currentTestRecord.missedCardIds.length === 0) return;
+    const missedIdsSet = new Set(currentTestRecord.missedCardIds);
+    const missedCards = allCards.filter((c) => missedIdsSet.has(c.id));
+    if (!missedCards.length) return;
+
+    const freshQuestions = buildStableQuizQuestions(missedCards, allCards, undefined, 1);
+    setQuestions(freshQuestions);
+    setQuestionIndex(0);
+    setUserAnswers({});
+    setFlaggedQuestions(new Set());
+    setAdaptiveStreak(0);
+    setAdaptivePeak(0);
+    setResults({ correct: 0, total: 0, submitted: false, adaptivePeak: 0 });
+    setCurrentTestRecord(null);
+    setTimeLeft(Math.max(60, freshQuestions.length * 30));
+    setHasResumedState(false);
   };
 
   const handleToggleShuffle = () => {
@@ -341,7 +626,7 @@ function TestContent() {
     } catch {}
 
     const newCards = nextShuffle ? shuffleArray([...filteredCards]) : [...filteredCards];
-    const newQuestions = buildAdaptiveQuizQuestions(newCards, allCards, questionCountLimit, currentAdaptiveBoost);
+    const newQuestions = buildStableQuizQuestions(newCards, allCards, questionCountLimit, currentAdaptiveLevel);
 
     const newUserAnswers: Record<number, string> = {};
     const newFlagged = new Set<number>();
@@ -354,10 +639,10 @@ function TestContent() {
       }
     });
 
+    setQuestions(newQuestions);
     setUserAnswers(newUserAnswers);
     setFlaggedQuestions(newFlagged);
 
-    // Keep user on the exact question they were currently viewing
     if (currentCardId) {
       const newIdx = newQuestions.findIndex((q) => q.card.id === currentCardId);
       setQuestionIndex(newIdx >= 0 ? newIdx : 0);
@@ -379,6 +664,18 @@ function TestContent() {
   const handleAnswerSelect = (answer: string) => {
     if (!currentQuestion || results.submitted) return;
 
+    const isCorrect = answer.trim().toLowerCase() === currentQuestion.card.answer.trim().toLowerCase();
+
+    // Update streak and adaptive peak
+    if (isCorrect) {
+      const nextStreak = adaptiveStreak + 1;
+      setAdaptiveStreak(nextStreak);
+      setAdaptivePeak((prev) => Math.max(prev, nextStreak));
+    } else {
+      setAdaptiveStreak(0);
+    }
+
+    // Set answer in user state (does NOT re-shuffle options!)
     setUserAnswers((prev) => ({
       ...prev,
       [questionIndex]: answer,
@@ -386,6 +683,7 @@ function TestContent() {
 
     if (autoAdvance && questionIndex < questions.length - 1) {
       setTimeout(() => {
+        setQuestionDirection("next");
         setQuestionIndex((prev) => prev + 1);
       }, 350);
     }
@@ -396,17 +694,78 @@ function TestContent() {
 
     const total = questions.length;
     let correct = 0;
+    const missedCardIds: string[] = [];
+
+    // Group questions by deck to calculate separated score per deck
+    const deckGroups = new Map<string, { total: number; correct: number; deckTitle: string }>();
 
     questions.forEach((q, idx) => {
+      const cardDeckId = q.card.deckId || selectedDeckId;
+      const foundDeck = decks.find((d) => d.id === cardDeckId);
+      const dTitle =
+        foundDeck?.title ||
+        (selectedDeckId === "all" ? "General Flashcards" : activeDeck?.title || "Study Set");
+      const existing = deckGroups.get(cardDeckId) || { total: 0, correct: 0, deckTitle: dTitle };
+      existing.total += 1;
+
       const selected = userAnswers[idx];
-      if (selected && selected.trim().toLowerCase() === q.card.answer.trim().toLowerCase()) {
+      const isCorrect =
+        selected && selected.trim().toLowerCase() === q.card.answer.trim().toLowerCase();
+      if (isCorrect) {
         correct++;
+        existing.correct += 1;
+      } else {
+        missedCardIds.push(q.card.id);
       }
+
+      deckGroups.set(cardDeckId, existing);
     });
 
-    const finalAdaptivePeak = Math.min(70, correct * 5);
+    const deckBreakdowns: DeckScoreBreakdown[] = Array.from(deckGroups.entries()).map(
+      ([dId, data]) => ({
+        deckId: dId,
+        deckTitle: data.deckTitle,
+        total: data.total,
+        correct: data.correct,
+        accuracy: Math.round((data.correct / Math.max(1, data.total)) * 100),
+      })
+    );
+
+    const finalAdaptivePeak = Math.max(adaptivePeak * 15, Math.min(70, correct * 5));
     const updatedStats = await recordTestSession(correct, total);
     setStats(updatedStats);
+
+    const initialAllocatedSeconds = Math.max(60, questions.length * 30);
+    const timeSpent = isUntimed ? 0 : Math.max(0, initialAllocatedSeconds - timeLeft);
+
+    const setLabel =
+      setDivisionConfig.enabled && deckSets.length > 1
+        ? ` — ${activeSet.setName} of ${deckSets.length}`
+        : "";
+    const computedDeckTitle =
+      selectedDeckId === "all"
+        ? `All Decks Combined${setLabel}`
+        : `${activeDeck?.title || "Study Set"}${setLabel}`;
+
+    const newRecord: TestRecord = {
+      id: "test-" + Date.now() + "-" + Math.random().toString(36).substring(2, 7),
+      deckId: selectedDeckId,
+      deckTitle: computedDeckTitle,
+      totalQuestions: total,
+      correctAnswers: correct,
+      scorePercentage: Math.round((correct / Math.max(total, 1)) * 100),
+      timeSpentSeconds: timeSpent,
+      completedAt: Date.now(),
+      adaptivePeak: finalAdaptivePeak,
+      deckBreakdowns: deckBreakdowns.length > 0 ? deckBreakdowns : undefined,
+      missedCardIds,
+    };
+
+    await saveTestRecord(newRecord);
+    await clearActiveTestState(selectedDeckId);
+
+    setCurrentTestRecord(newRecord);
+    setHasResumedState(false);
     setResults({
       correct,
       total,
@@ -502,6 +861,35 @@ function TestContent() {
           <div className="mt-8 flex flex-wrap justify-center gap-3">
             <button
               type="button"
+              onClick={(e) => handleOpenHistoryModal(e)}
+              className="inline-flex items-center gap-2 rounded-full border border-cyan-500/50 bg-cyan-500/15 px-6 py-3 text-sm font-bold text-cyan-300 hover:bg-cyan-500/25 transition cursor-pointer active:scale-95 shadow-sm"
+            >
+              <Trophy size={16} className="text-cyan-400" />
+              <span>Score History 📊</span>
+            </button>
+
+            {currentTestRecord?.missedCardIds && currentTestRecord.missedCardIds.length > 0 && (
+              <button
+                type="button"
+                onClick={handleRetakeMissedQuestions}
+                className="inline-flex items-center gap-2 rounded-full border border-rose-500/50 bg-rose-500/15 px-6 py-3 text-sm font-bold text-rose-300 hover:bg-rose-500/25 transition cursor-pointer active:scale-95 shadow-sm"
+              >
+                <RotateCcw size={16} />
+                <span>Retake Missed ({currentTestRecord.missedCardIds.length}) 🎯</span>
+              </button>
+            )}
+
+            <button
+              type="button"
+              onClick={handleStartFreshQuiz}
+              className="inline-flex items-center gap-2 rounded-full bg-cyan-500 px-6 py-3 text-sm font-bold text-slate-950 hover:bg-cyan-400 transition cursor-pointer active:scale-95 shadow-md shadow-cyan-500/20"
+            >
+              <RotateCcw size={16} />
+              Retake Full Quiz
+            </button>
+
+            <button
+              type="button"
               onClick={() => {
                 if (typeof window !== "undefined") {
                   window.dispatchEvent(
@@ -522,20 +910,7 @@ function TestContent() {
               <Sparkles size={16} className="text-amber-300" />
               AI Improvement Plan ✨
             </button>
-            <button
-              type="button"
-              onClick={() => {
-                setQuestionIndex(0);
-                setUserAnswers({});
-                setFlaggedQuestions(new Set());
-                setResults({ correct: 0, total: 0, submitted: false, adaptivePeak: 0 });
-                setTimeLeft(Math.max(60, questions.length * 30));
-              }}
-              className="inline-flex items-center gap-2 rounded-full bg-cyan-500 px-6 py-3 text-sm font-bold text-slate-950 hover:bg-cyan-400 transition cursor-pointer"
-            >
-              <RotateCcw size={16} />
-              Retake Quiz
-            </button>
+
             <Link
               href={selectedDeckId === "all" ? "/review" : `/review?deckId=${selectedDeckId}`}
               className="inline-flex items-center gap-2 rounded-full border border-slate-700 bg-slate-950 px-6 py-3 text-sm font-semibold text-slate-200 hover:border-slate-500 transition"
@@ -545,6 +920,86 @@ function TestContent() {
             </Link>
           </div>
         </div>
+
+        {/* Separated Deck Score Breakdown (if multiple decks were tested) */}
+        {currentTestRecord?.deckBreakdowns && currentTestRecord.deckBreakdowns.length > 1 && (
+          <div className="rounded-3xl border border-slate-800 bg-slate-900/80 p-5 sm:p-7 shadow-xl space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2.5">
+                <Layers size={18} className="text-cyan-400" />
+                <h3 className="text-base sm:text-lg font-bold text-white">
+                  Deck Score Breakdown ({currentTestRecord.deckBreakdowns.length} Decks Tested)
+                </h3>
+              </div>
+              <p className="text-xs text-slate-400">
+                Scores separated by deck with individual retake options
+              </p>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              {currentTestRecord.deckBreakdowns.map((b) => {
+                const isDeckPassed = b.accuracy >= 75;
+                return (
+                  <div
+                    key={b.deckId}
+                    className="flex flex-col justify-between rounded-2xl border border-slate-800 bg-slate-950/70 p-4 transition hover:border-slate-700"
+                  >
+                    <div>
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <Folder size={15} className="text-cyan-400 shrink-0" />
+                          <h4 className="text-sm font-bold text-white line-clamp-1">{b.deckTitle}</h4>
+                        </div>
+                        <span
+                          className={`rounded-xl px-2.5 py-0.5 font-mono text-xs font-bold ${
+                            isDeckPassed
+                              ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
+                              : "bg-rose-500/20 text-rose-300 border border-rose-500/30"
+                          }`}
+                        >
+                          {b.accuracy}%
+                        </span>
+                      </div>
+
+                      <p className="mt-1.5 text-xs text-slate-400">
+                        <span className="font-semibold text-slate-200">{b.correct}</span> of {b.total} questions correct
+                      </p>
+
+                      {/* Progress bar */}
+                      <div className="mt-2.5 h-1.5 w-full rounded-full bg-slate-800 overflow-hidden">
+                        <div
+                          className={`h-full rounded-full transition-all duration-500 ${
+                            isDeckPassed ? "bg-emerald-400" : "bg-rose-400"
+                          }`}
+                          style={{ width: `${b.accuracy}%` }}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Action buttons */}
+                    <div className="mt-4 flex items-center gap-2 pt-2 border-t border-slate-800/80">
+                      <button
+                        type="button"
+                        onClick={() => handleSelectDeck(b.deckId)}
+                        className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-xl bg-cyan-500/20 px-3 py-1.5 text-xs font-bold text-cyan-300 hover:bg-cyan-500 hover:text-slate-950 transition cursor-pointer active:scale-95"
+                      >
+                        <RotateCcw size={12} />
+                        <span>Retake Deck</span>
+                      </button>
+                      <Link
+                        href={`/review?deckId=${b.deckId}`}
+                        className="inline-flex items-center justify-center gap-1 rounded-xl border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs font-medium text-slate-300 hover:text-white transition"
+                      >
+                        <BookOpen size={12} />
+                        <span>Review</span>
+                      </Link>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {/* Detailed Question by Question Review */}
         <div className="space-y-4">
@@ -660,10 +1115,10 @@ function TestContent() {
       {/* Header & Controls */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.25em] text-violet-300">
+          <p className="text-xs font-semibold uppercase tracking-[0.25em] text-violet-300 cursor-default">
             Quiz &amp; Adaptive Assessment
           </p>
-          <h1 className="mt-1 text-2xl sm:text-4xl font-extrabold text-white tracking-tight">
+          <h1 className="mt-1 text-2xl sm:text-4xl font-extrabold text-white tracking-tight cursor-default">
             {selectedDeckId === "all" ? "Test All Decks" : `${activeDeck?.title || "Study Set"} Quiz`}
           </h1>
         </div>
@@ -675,6 +1130,38 @@ function TestContent() {
             onSelectDeck={handleSelectDeck}
             totalCardsCount={allCards.length}
           />
+
+          {/* Deck Set Divider & Selector */}
+          <DeckSetSelector
+            cards={rawDeckCards}
+            config={setDivisionConfig}
+            activeSetIndex={activeSetIndex}
+            onConfigChange={(newCfg) => {
+              setSetDivisionConfig(newCfg);
+              setActiveSetIndex(0);
+              setQuestionIndex(0);
+              setUserAnswers({});
+              setFlaggedQuestions(new Set());
+            }}
+            onActiveSetChange={(idx) => {
+              setActiveSetIndex(idx);
+              setQuestionIndex(0);
+              setUserAnswers({});
+              setFlaggedQuestions(new Set());
+            }}
+            modeLabel="Test"
+          />
+
+          {/* Test History & Deck Scores Button */}
+          <button
+            type="button"
+            onClick={(e) => handleOpenHistoryModal(e)}
+            title="View past test records, deck score breakdowns, and retake previous tests"
+            className="flex items-center gap-1.5 rounded-full border border-cyan-500/40 bg-cyan-500/10 px-3.5 py-1.5 text-xs font-bold text-cyan-300 hover:bg-cyan-500/20 hover:border-cyan-400 transition cursor-pointer active:scale-95 shadow-xs"
+          >
+            <History size={13} className="text-cyan-400" />
+            <span>Scores &amp; History</span>
+          </button>
 
           {/* Question Count Preset Selector */}
           <div className="flex items-center gap-1 rounded-full border border-slate-800 bg-slate-900/90 px-3 py-1.5 text-xs text-slate-300">
@@ -743,6 +1230,31 @@ function TestContent() {
 
       <ProgressStats stats={stats} />
 
+      {/* Resume Active Session Banner */}
+      {hasResumedState && !results.submitted && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-cyan-500/30 bg-cyan-950/40 px-4.5 py-3 text-xs text-cyan-200 shadow-md backdrop-blur-sm animate-in fade-in slide-in-from-top-2 duration-200">
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-xl bg-cyan-500/20 text-cyan-300">
+              <CheckCircle2 size={16} />
+            </div>
+            <div>
+              <p className="font-bold text-white">In-Progress Test Resumed 💾</p>
+              <p className="text-[11px] text-cyan-300/80">
+                Your previous answers and question position have been preserved and restored.
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={handleStartFreshQuiz}
+            className="inline-flex items-center gap-1.5 rounded-xl border border-slate-700 bg-slate-900/90 px-3 py-1.5 text-xs font-semibold text-slate-300 hover:bg-slate-800 hover:text-white transition cursor-pointer active:scale-95"
+          >
+            <RotateCcw size={12} />
+            <span>Start Fresh Quiz</span>
+          </button>
+        </div>
+      )}
+
       {!filteredCards.length || !questions.length ? (
         <div className="rounded-3xl border border-dashed border-slate-800 bg-slate-900/40 p-12 text-center">
           <h3 className="text-lg font-semibold text-white">Not enough cards for quiz</h3>
@@ -800,7 +1312,10 @@ function TestContent() {
                     key={idx}
                     type="button"
                     data-index={idx}
-                    onClick={() => setQuestionIndex(idx)}
+                    onClick={() => {
+                      setQuestionDirection(idx > questionIndex ? "next" : "prev");
+                      setQuestionIndex(idx);
+                    }}
                     title={`Question ${idx + 1}: ${q.card.question.slice(0, 40)}...`}
                     className={`relative flex h-9 min-w-9 shrink-0 items-center justify-center rounded-xl font-mono text-xs font-bold transition-all cursor-pointer ${
                       isCurrent
@@ -826,9 +1341,30 @@ function TestContent() {
           {/* 3. ACTIVE QUESTION CARD */}
           <div className="flex flex-col items-center gap-4">
             <div className="flex items-center justify-between w-full max-w-2xl text-xs text-slate-400">
-              <span className="font-semibold">
-                Question {questionIndex + 1} of {questions.length}
-              </span>
+              <div className="flex items-center gap-2">
+                <span className="font-semibold">
+                  Question {questionIndex + 1} of {questions.length}
+                </span>
+                <span
+                  className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-bold border transition-all ${
+                    currentAdaptiveLevel === 3
+                      ? "border-amber-500/40 bg-amber-500/15 text-amber-300 shadow-sm shadow-amber-500/10"
+                      : currentAdaptiveLevel === 2
+                      ? "border-cyan-500/40 bg-cyan-500/15 text-cyan-300 shadow-sm shadow-cyan-500/10"
+                      : "border-slate-700 bg-slate-800/80 text-slate-300"
+                  }`}
+                >
+                  <BrainCircuit size={12} className={currentAdaptiveLevel >= 2 ? "text-amber-400 animate-pulse" : "text-cyan-400"} />
+                  <span>
+                    {currentAdaptiveLevel === 3
+                      ? "⚡ Level 3: Master (Near-Misses)"
+                      : currentAdaptiveLevel === 2
+                      ? "🔥 Level 2: Close Concepts"
+                      : "Level 1: Standard"}
+                  </span>
+                </span>
+              </div>
+
               {currentQuestion && (
                 <button
                   type="button"
@@ -855,17 +1391,30 @@ function TestContent() {
             </div>
 
             {currentQuestion && (
-              <QuizQuestion
-                question={currentQuestion.card}
-                options={currentQuestion.options}
-                selectedAnswer={userAnswers[questionIndex]}
-                onSelect={handleAnswerSelect}
-                questionNumber={questionIndex + 1}
-                totalQuestions={questions.length}
-                adaptiveBoost={currentAdaptiveBoost}
-                isFlagged={flaggedQuestions.has(questionIndex)}
-                onToggleFlag={() => handleToggleFlag(questionIndex)}
-              />
+              <div
+                key={`${currentQuestion.card.id || questionIndex}-${questionIndex}`}
+                className={`w-full max-w-2xl ${
+                  questionDirection === "prev"
+                    ? "animate-deck-prev"
+                    : questionDirection === "next"
+                    ? "animate-deck-next"
+                    : "animate-deck-pop"
+                }`}
+              >
+                <QuizQuestion
+                  question={currentQuestion.card}
+                  options={currentQuestion.options}
+                  selectedAnswer={userAnswers[questionIndex]}
+                  onSelect={handleAnswerSelect}
+                  questionNumber={questionIndex + 1}
+                  totalQuestions={questions.length}
+                  adaptiveBoost={currentAdaptiveBoost}
+                  adaptiveLevel={currentAdaptiveLevel}
+                  streakCount={adaptiveStreak}
+                  isFlagged={flaggedQuestions.has(questionIndex)}
+                  onToggleFlag={() => handleToggleFlag(questionIndex)}
+                />
+              </div>
             )}
 
             {/* 4. NAVIGATION & SUBMIT CONTROLS */}
@@ -873,7 +1422,10 @@ function TestContent() {
               <button
                 type="button"
                 disabled={questionIndex === 0}
-                onClick={() => setQuestionIndex((prev) => Math.max(0, prev - 1))}
+                onClick={() => {
+                  setQuestionDirection("prev");
+                  setQuestionIndex((prev) => Math.max(0, prev - 1));
+                }}
                 className="flex items-center gap-1.5 rounded-2xl border border-slate-800 bg-slate-900/90 px-4 py-3 text-xs sm:text-sm font-semibold text-slate-300 hover:border-slate-600 hover:text-white disabled:opacity-40 disabled:cursor-not-allowed transition cursor-pointer shadow-sm"
               >
                 <ArrowLeft size={16} />
@@ -899,7 +1451,10 @@ function TestContent() {
                 {questionIndex < questions.length - 1 ? (
                   <button
                     type="button"
-                    onClick={() => setQuestionIndex((prev) => Math.min(questions.length - 1, prev + 1))}
+                    onClick={() => {
+                      setQuestionDirection("next");
+                      setQuestionIndex((prev) => Math.min(questions.length - 1, prev + 1));
+                    }}
                     className="flex items-center gap-1.5 rounded-2xl border border-cyan-500/50 bg-cyan-500/10 px-4 py-3 text-xs sm:text-sm font-bold text-cyan-300 hover:bg-cyan-500/20 transition cursor-pointer shadow-sm"
                   >
                     <span>Next</span>
@@ -1002,6 +1557,7 @@ function TestContent() {
                     <div
                       key={idx}
                       onClick={() => {
+                        setQuestionDirection(idx > questionIndex ? "next" : "prev");
                         setQuestionIndex(idx);
                         setIsOverviewDrawerOpen(false);
                       }}
@@ -1123,6 +1679,19 @@ function TestContent() {
           </div>
         </div>
       )}
+
+      {/* 7. TEST HISTORY & DECK SCORES MODAL */}
+      <TestHistoryModal
+        isOpen={isHistoryModalOpen}
+        onClose={() => setIsHistoryModalOpen(false)}
+        origin={historyOrigin}
+        deckId={selectedDeckId}
+        decks={decks}
+        onRetakeDeck={(deckId) => {
+          setIsHistoryModalOpen(false);
+          handleSelectDeck(deckId);
+        }}
+      />
     </div>
   );
 }

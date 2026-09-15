@@ -1,4 +1,14 @@
-import { Deck, Flashcard, SharedDeckPayload, UserDeckRole, UserStats } from "@/types/flashcard";
+import {
+  ActiveTestState,
+  Deck,
+  DeckScoreBreakdown,
+  DeckScoreSummary,
+  Flashcard,
+  SharedDeckPayload,
+  TestRecord,
+  UserDeckRole,
+  UserStats,
+} from "@/types/flashcard";
 import { auth, db, isFirebaseConfigured } from "./firebase";
 import {
   collection,
@@ -10,6 +20,7 @@ import {
   getDoc,
   query,
   where,
+  orderBy,
 } from "firebase/firestore";
 
 function getUserDecksCollection() {
@@ -20,6 +31,21 @@ function getUserDecksCollection() {
 function getUserStatsDoc() {
   if (!isFirebaseConfigured || !db) return null;
   return doc(db, "users", getCurrentUserId());
+}
+
+function getUserActiveTestsCollection() {
+  if (!isFirebaseConfigured || !db) return null;
+  return collection(db, "users", getCurrentUserId(), "active_tests");
+}
+
+function getUserTestRecordsCollection() {
+  if (!isFirebaseConfigured || !db) return null;
+  return collection(db, "users", getCurrentUserId(), "test_records");
+}
+
+function getUserDeckScoresCollection() {
+  if (!isFirebaseConfigured || !db) return null;
+  return collection(db, "users", getCurrentUserId(), "deck_scores");
 }
 
 function getSharedDecksCollection() {
@@ -452,6 +478,7 @@ export async function createDeck(data: {
   tags?: string[];
   cards?: Omit<Flashcard, "id" | "createdAt">[];
   shuffleQuestions?: boolean;
+  setDivision?: Deck["setDivision"];
   accessControl?: Deck["accessControl"];
 }): Promise<Deck> {
   const deckId = "deck-" + Date.now() + "-" + Math.random().toString(36).substring(2, 7);
@@ -484,6 +511,7 @@ export async function createDeck(data: {
     authorEmail: currentEmail,
     authorName: currentName,
     shuffleQuestions: data.shuffleQuestions ?? false,
+    setDivision: data.setDivision,
     accessControl: data.accessControl || {
       defaultRole: "viewer", // Read-only for others by default
       visibility: "unlisted",
@@ -1092,28 +1120,112 @@ export async function deleteFlashcard(id: string): Promise<void> {
   }
 }
 
-export async function recordReviewResult(cardId: string, remembered: boolean): Promise<void> {
-  const allCards = await fetchFlashcards();
-  const target = allCards.find((c) => c.id === cardId);
-  if (!target) return;
+// ----------------------------------------------------
+// WRITE STREAM THROTTLING & DEBOUNCING QUEUES
+// (Prevents Firestore code=resource-exhausted write stream exhaustion)
+// ----------------------------------------------------
 
-  let newDifficulty = target.difficulty;
+let statsDebounceTimer: NodeJS.Timeout | null = null;
+let pendingStatsToSync: UserStats | null = null;
+
+export function scheduleStatsSyncToFirestore(updatedStats: UserStats): void {
+  pendingStatsToSync = updatedStats;
+  if (statsDebounceTimer) {
+    clearTimeout(statsDebounceTimer);
+  }
+  statsDebounceTimer = setTimeout(async () => {
+    statsDebounceTimer = null;
+    const statsToSave = pendingStatsToSync;
+    if (!statsToSave) return;
+    if (await canUseFirestore()) {
+      try {
+        const statsDoc = getUserStatsDoc();
+        if (statsDoc) {
+          await setDoc(statsDoc, sanitizeForFirestore({ progress: statsToSave }), { merge: true });
+        }
+      } catch (e: any) {
+        if (e?.code === "resource-exhausted" || e?.message?.includes("Write stream")) {
+          console.warn("Firestore write stream throttled stats update; local stats remain authoritative.");
+        } else {
+          console.warn("Firestore user stats update failed", e);
+        }
+      }
+    }
+  }, 1500);
+}
+
+const deckDebounceTimers = new Map<string, NodeJS.Timeout>();
+const pendingDecksToSync = new Map<string, Deck>();
+
+export function scheduleDeckSyncToFirestore(deck: Deck): void {
+  pendingDecksToSync.set(deck.id, deck);
+  if (deckDebounceTimers.has(deck.id)) {
+    clearTimeout(deckDebounceTimers.get(deck.id)!);
+  }
+
+  const timer = setTimeout(async () => {
+    deckDebounceTimers.delete(deck.id);
+    const deckToSave = pendingDecksToSync.get(deck.id);
+    if (!deckToSave) return;
+    pendingDecksToSync.delete(deck.id);
+
+    if (await canUseFirestore()) {
+      try {
+        const colRef = getUserDecksCollection();
+        if (colRef) {
+          await setDoc(doc(colRef, deckToSave.id), sanitizeForFirestore(deckToSave), { merge: true });
+        }
+      } catch (e: any) {
+        if (e?.code === "resource-exhausted" || e?.message?.includes("Write stream")) {
+          console.warn("Firestore write stream throttled deck update; local deck is preserved.");
+        } else {
+          console.warn("Firestore deck background sync error:", e);
+        }
+      }
+    }
+  }, 2000);
+
+  deckDebounceTimers.set(deck.id, timer);
+}
+
+export async function recordReviewResult(cardId: string, remembered: boolean): Promise<void> {
+  const allDecks = getLocalDecks();
+  let targetCard: Flashcard | null = null;
+  let targetDeck: Deck | null = null;
+
+  for (const deck of allDecks) {
+    const found = deck.cards.find((c) => c.id === cardId);
+    if (found) {
+      targetCard = found;
+      targetDeck = deck;
+      break;
+    }
+  }
+
+  if (!targetCard || !targetDeck) return;
+
+  let newDifficulty = targetCard.difficulty;
   if (remembered) {
-    newDifficulty = Math.max(1, target.difficulty - 1);
+    newDifficulty = Math.max(1, targetCard.difficulty - 1);
   } else {
-    newDifficulty = Math.min(5, target.difficulty + 1);
+    newDifficulty = Math.min(5, targetCard.difficulty + 1);
   }
 
   const updatedCard: Flashcard = {
-    ...target,
+    ...targetCard,
     difficulty: newDifficulty,
     lastReviewed: Date.now(),
-    reviewCount: (target.reviewCount || 0) + 1,
-    correctCount: (target.correctCount || 0) + (remembered ? 1 : 0),
+    reviewCount: (targetCard.reviewCount || 0) + 1,
+    correctCount: (targetCard.correctCount || 0) + (remembered ? 1 : 0),
   };
 
-  await updateFlashcard(updatedCard);
+  // 1. Synchronously update local cache and memory (instant 0ms UI)
+  const updatedCards = targetDeck.cards.map((c) => (c.id === cardId ? updatedCard : c));
+  const updatedDeck = { ...targetDeck, cards: updatedCards };
+  const updatedAllDecks = allDecks.map((d) => (d.id === targetDeck!.id ? updatedDeck : d));
+  saveLocalDecks(updatedAllDecks);
 
+  // 2. Synchronously update local user stats
   const stats = getLocalStats();
   const reviewed = stats.reviewed + 1;
   const correct = stats.correct + (remembered ? 1 : 0);
@@ -1125,19 +1237,11 @@ export async function recordReviewResult(cardId: string, remembered: boolean): P
     correct,
     accuracy,
   };
-
   saveLocalStats(updatedStats);
 
-  if (await canUseFirestore()) {
-    try {
-      const statsDoc = getUserStatsDoc();
-      if (statsDoc) {
-        await setDoc(statsDoc, sanitizeForFirestore({ progress: updatedStats }), { merge: true });
-      }
-    } catch (e) {
-      console.warn("Firestore user stats update failed", e);
-    }
-  }
+  // 3. Debounce cloud writes to protect write stream capacity
+  scheduleStatsSyncToFirestore(updatedStats);
+  scheduleDeckSyncToFirestore(updatedDeck);
 }
 
 export async function recordTestSession(correctAnswers: number, totalQuestions: number): Promise<UserStats> {
@@ -1156,17 +1260,7 @@ export async function recordTestSession(correctAnswers: number, totalQuestions: 
   };
 
   saveLocalStats(updatedStats);
-
-  if (await canUseFirestore()) {
-    try {
-      const statsDoc = getUserStatsDoc();
-      if (statsDoc) {
-        await setDoc(statsDoc, sanitizeForFirestore({ progress: updatedStats }), { merge: true });
-      }
-    } catch (e) {
-      console.warn("Firestore user stats update failed", e);
-    }
-  }
+  scheduleStatsSyncToFirestore(updatedStats);
 
   return updatedStats;
 }
@@ -1205,4 +1299,250 @@ export async function resetAllFlashcards(): Promise<Flashcard[]> {
   }
   saveLocalDecks([]);
   return [];
+}
+
+// ----------------------------------------------------
+// ACTIVE TEST STATE PERSISTENCE (IN-PROGRESS TESTS)
+// ----------------------------------------------------
+
+const activeTestSaveTimers = new Map<string, NodeJS.Timeout>();
+const pendingActiveTestStates = new Map<string, ActiveTestState>();
+
+export async function saveActiveTestState(state: ActiveTestState): Promise<void> {
+  // 1. Instant local storage write (synchronous, 0ms latency, always persisted)
+  if (typeof window !== "undefined") {
+    try {
+      localStorage.setItem(getStorageKey(`rf_active_test_${state.deckId}`), JSON.stringify(state));
+    } catch (e) {
+      console.warn("Local storage save active test error:", e);
+    }
+  }
+
+  // 2. Coalesced & debounced Firestore sync (prevents write stream queue overflow)
+  pendingActiveTestStates.set(state.deckId, state);
+  if (activeTestSaveTimers.has(state.deckId)) {
+    clearTimeout(activeTestSaveTimers.get(state.deckId)!);
+  }
+
+  const timer = setTimeout(async () => {
+    activeTestSaveTimers.delete(state.deckId);
+    const stateToSave = pendingActiveTestStates.get(state.deckId);
+    if (!stateToSave) return;
+    pendingActiveTestStates.delete(state.deckId);
+
+    if (await canUseFirestore()) {
+      try {
+        const colRef = getUserActiveTestsCollection();
+        if (colRef) {
+          await setDoc(doc(colRef, stateToSave.deckId), sanitizeForFirestore(stateToSave));
+        }
+      } catch (e: any) {
+        if (e?.code === "resource-exhausted" || e?.message?.includes("Write stream")) {
+          console.warn("Firestore write stream busy; active test state preserved in local storage.");
+        } else {
+          console.warn("Firestore save active test error:", e);
+        }
+      }
+    }
+  }, 1500);
+
+  activeTestSaveTimers.set(state.deckId, timer);
+}
+
+export async function fetchActiveTestState(deckId: string): Promise<ActiveTestState | null> {
+  // 1. Try local storage first
+  if (typeof window !== "undefined") {
+    try {
+      const raw = localStorage.getItem(getStorageKey(`rf_active_test_${deckId}`));
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && Array.isArray(parsed.questions) && parsed.questions.length > 0) {
+          return parsed as ActiveTestState;
+        }
+      }
+    } catch {
+      // fallback
+    }
+  }
+
+  // 2. Try Firestore
+  if (await canUseFirestore()) {
+    try {
+      const colRef = getUserActiveTestsCollection();
+      if (colRef) {
+        const snap = await getDoc(doc(colRef, deckId));
+        if (snap.exists()) {
+          return snap.data() as ActiveTestState;
+        }
+      }
+    } catch (e) {
+      console.warn("Firestore fetch active test error:", e);
+    }
+  }
+
+  return null;
+}
+
+export async function clearActiveTestState(deckId: string): Promise<void> {
+  if (activeTestSaveTimers.has(deckId)) {
+    clearTimeout(activeTestSaveTimers.get(deckId)!);
+    activeTestSaveTimers.delete(deckId);
+  }
+  pendingActiveTestStates.delete(deckId);
+
+  if (typeof window !== "undefined") {
+    try {
+      localStorage.removeItem(getStorageKey(`rf_active_test_${deckId}`));
+    } catch {}
+  }
+
+  if (await canUseFirestore()) {
+    try {
+      const colRef = getUserActiveTestsCollection();
+      if (colRef) {
+        await deleteDoc(doc(colRef, deckId));
+      }
+    } catch (e) {
+      console.warn("Firestore clear active test error:", e);
+    }
+  }
+}
+
+// ----------------------------------------------------
+// TEST SCORES & TEST HISTORY PERSISTENCE
+// ----------------------------------------------------
+
+export function getLocalTestRecords(): TestRecord[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = localStorage.getItem(getStorageKey("review_flash_test_records_v1"));
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveLocalTestRecords(records: TestRecord[]): void {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(getStorageKey("review_flash_test_records_v1"), JSON.stringify(records));
+  } catch {}
+}
+
+export function getLocalDeckScores(): Record<string, DeckScoreSummary> {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = localStorage.getItem(getStorageKey("review_flash_deck_scores_v1"));
+    if (!raw) return {};
+    return JSON.parse(raw);
+  } catch {
+    return {};
+  }
+}
+
+function saveLocalDeckScores(scores: Record<string, DeckScoreSummary>): void {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(getStorageKey("review_flash_deck_scores_v1"), JSON.stringify(scores));
+  } catch {}
+}
+
+export async function saveTestRecord(record: TestRecord): Promise<void> {
+  // 1. Save to local records
+  const existingLocal = getLocalTestRecords();
+  const updatedRecords = [record, ...existingLocal.filter((r) => r.id !== record.id)].slice(0, 100);
+  saveLocalTestRecords(updatedRecords);
+
+  // 2. Update deck score summaries locally
+  const currentScores = getLocalDeckScores();
+  const updateSummaryFor = (dId: string, scorePct: number) => {
+    const prev = currentScores[dId] || { latestScore: 0, bestScore: 0, lastTakenAt: 0, totalTakes: 0 };
+    currentScores[dId] = {
+      latestScore: scorePct,
+      bestScore: Math.max(prev.bestScore, scorePct),
+      lastTakenAt: record.completedAt,
+      totalTakes: prev.totalTakes + 1,
+    };
+  };
+
+  updateSummaryFor(record.deckId, record.scorePercentage);
+  if (record.deckBreakdowns && record.deckBreakdowns.length > 0) {
+    for (const b of record.deckBreakdowns) {
+      updateSummaryFor(b.deckId, b.accuracy);
+    }
+  }
+  saveLocalDeckScores(currentScores);
+
+  // 3. Persist to Firestore
+  if (await canUseFirestore()) {
+    try {
+      const recordsCol = getUserTestRecordsCollection();
+      if (recordsCol) {
+        await setDoc(doc(recordsCol, record.id), sanitizeForFirestore(record));
+      }
+      const scoresCol = getUserDeckScoresCollection();
+      if (scoresCol) {
+        await setDoc(doc(scoresCol, record.deckId), sanitizeForFirestore(currentScores[record.deckId]), { merge: true });
+        if (record.deckBreakdowns && record.deckBreakdowns.length > 0) {
+          for (const b of record.deckBreakdowns) {
+            await setDoc(doc(scoresCol, b.deckId), sanitizeForFirestore(currentScores[b.deckId]), { merge: true });
+          }
+        }
+      }
+    } catch (e) {
+      console.warn("Firestore saveTestRecord error:", e);
+    }
+  }
+}
+
+export async function fetchTestHistory(deckId?: string): Promise<TestRecord[]> {
+  let records: TestRecord[] = [];
+
+  if (await canUseFirestore()) {
+    try {
+      const colRef = getUserTestRecordsCollection();
+      if (colRef) {
+        const snap = await getDocs(query(colRef, orderBy("completedAt", "desc")));
+        if (!snap.empty) {
+          records = snap.docs.map((d) => ({ id: d.id, ...d.data() } as TestRecord));
+        }
+      }
+    } catch (e) {
+      console.warn("Firestore fetchTestHistory error, fallback to local:", e);
+      records = getLocalTestRecords();
+    }
+  } else {
+    records = getLocalTestRecords();
+  }
+
+  if (deckId && deckId !== "all") {
+    return records.filter(
+      (r) => r.deckId === deckId || (r.deckBreakdowns && r.deckBreakdowns.some((b) => b.deckId === deckId))
+    );
+  }
+  return records;
+}
+
+export async function fetchDeckScoreSummaries(): Promise<Record<string, DeckScoreSummary>> {
+  if (await canUseFirestore()) {
+    try {
+      const colRef = getUserDeckScoresCollection();
+      if (colRef) {
+        const snap = await getDocs(colRef);
+        if (!snap.empty) {
+          const map: Record<string, DeckScoreSummary> = {};
+          snap.docs.forEach((d) => {
+            map[d.id] = d.data() as DeckScoreSummary;
+          });
+          saveLocalDeckScores(map);
+          return map;
+        }
+      }
+    } catch (e) {
+      console.warn("Firestore fetchDeckScoreSummaries fallback to local:", e);
+    }
+  }
+  return getLocalDeckScores();
 }

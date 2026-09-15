@@ -9,11 +9,20 @@ interface QuizQuestionProps {
   questionNumber?: number;
   totalQuestions?: number;
   adaptiveBoost?: number;
+  adaptiveLevel?: number;
+  streakCount?: number;
   isFlagged?: boolean;
   onToggleFlag?: () => void;
 }
 
 const OPTION_LABELS = ["A", "B", "C", "D", "E", "F"];
+
+function getAdaptiveQuestionFont(text: string): string {
+  const len = text.trim().length;
+  if (len <= 80) return "text-xl sm:text-2xl font-bold";
+  if (len <= 200) return "text-lg sm:text-xl font-semibold";
+  return "text-base sm:text-lg font-medium";
+}
 
 export function QuizQuestion({
   question,
@@ -23,9 +32,13 @@ export function QuizQuestion({
   questionNumber,
   totalQuestions,
   adaptiveBoost = 0,
+  adaptiveLevel = 1,
+  streakCount = 0,
   isFlagged = false,
   onToggleFlag,
 }: QuizQuestionProps) {
+  const fontClass = getAdaptiveQuestionFont(question.question);
+
   return (
     <div className="w-full max-w-2xl rounded-3xl border border-slate-800 bg-slate-900/90 p-5 sm:p-7 shadow-2xl shadow-slate-950/40 backdrop-blur-sm transition-all">
       {/* Question Header & Meta */}
@@ -37,6 +50,13 @@ export function QuizQuestion({
             </span>
           ) : (
             <span className="font-semibold text-slate-300">Question</span>
+          )}
+
+          {streakCount >= 2 && (
+            <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/40 bg-amber-500/20 px-2.5 py-0.5 text-[11px] font-bold text-amber-300 animate-pulse">
+              <Zap size={11} className="fill-amber-400 text-amber-400" />
+              <span>{streakCount}x Streak · Level {adaptiveLevel} AI Distractors</span>
+            </span>
           )}
         </div>
 
@@ -63,10 +83,12 @@ export function QuizQuestion({
         </div>
       </div>
 
-      {/* Question Prompt */}
-      <h2 className="mb-6 text-xl sm:text-2xl font-bold leading-relaxed text-white tracking-tight">
-        {question.question}
-      </h2>
+      {/* Question Prompt with Adaptive Typography and Scrollability for Long Texts */}
+      <div className="mb-5 max-h-[220px] overflow-y-auto pr-1 custom-scrollbar">
+        <h2 className={`${fontClass} leading-relaxed text-white tracking-tight break-words whitespace-pre-wrap select-text`}>
+          {question.question}
+        </h2>
+      </div>
 
       {/* Tags if present */}
       {question.tags && question.tags.length > 0 && (
@@ -104,7 +126,8 @@ export function QuizQuestion({
                   );
                 }
               }}
-              className={`group flex items-center gap-3.5 rounded-2xl border p-3.5 sm:p-4 text-left text-sm sm:text-base font-medium transition-all duration-150 active:scale-[0.985] cursor-pointer min-h-[52px] ${
+              style={{ animationDelay: `${idx * 45}ms` }}
+              className={`group flex items-start sm:items-center gap-3.5 rounded-2xl border p-3.5 sm:p-4 text-left font-medium transition-all duration-150 active:scale-[0.985] cursor-pointer min-h-[54px] animate-option-cascade ${
                 isSelected
                   ? "border-cyan-400 bg-cyan-500/15 text-cyan-100 shadow-lg shadow-cyan-500/10 ring-1 ring-cyan-400/50"
                   : "border-slate-800 bg-slate-950/70 text-slate-200 hover:border-slate-600 hover:bg-slate-800/80"
@@ -112,7 +135,7 @@ export function QuizQuestion({
             >
               {/* Option Letter Indicator */}
               <div
-                className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-xl font-mono text-xs font-bold transition-colors ${
+                className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-xl font-mono text-xs font-bold transition-colors mt-0.5 sm:mt-0 ${
                   isSelected
                     ? "bg-cyan-400 text-slate-950 shadow-md shadow-cyan-400/30"
                     : "border border-slate-700 bg-slate-900 text-slate-400 group-hover:border-slate-500 group-hover:text-slate-200"
@@ -121,8 +144,8 @@ export function QuizQuestion({
                 {label}
               </div>
 
-              {/* Option Text */}
-              <span className="flex-1 leading-snug break-words">
+              {/* Option Text with Support for Long Multi-line Content */}
+              <span className="flex-1 text-xs sm:text-sm md:text-[15px] leading-relaxed break-words whitespace-pre-wrap">
                 {option}
               </span>
             </button>
@@ -132,4 +155,5 @@ export function QuizQuestion({
     </div>
   );
 }
+
 

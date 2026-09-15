@@ -270,6 +270,313 @@ export async function generateFlashcardsWithAI(
   return smartAutoDetectWithAI(rawContent, "from-context", options);
 }
 
+/**
+ * Smart Heuristic Distractor Generator
+ * Produces logically relative, domain-accurate alternatives based on question/answer semantics
+ * (e.g. function keys, ports, years, numbers, booleans, or closely scored deck sibling terms).
+ */
+export function generateHeuristicSmartDistractors(
+  card: { question: string; answer: string; tags?: string[] },
+  poolCards: Array<{ id?: string; answer: string; tags?: string[]; difficulty?: number }> = [],
+  difficultyLevel: number = 1
+): string[] {
+  const ans = card.answer.trim();
+  const q = card.question.trim().toLowerCase();
+
+  // 1. BIOS Keys & Keyboard shortcuts (e.g., "F5", "F2", "Del", "Esc", "F12")
+  if (/^F([1-9]|1[0-2])$/i.test(ans) || /^(Del|Delete|Esc|Escape|Enter|Tab|F2|F12|F8|F10)$/i.test(ans)) {
+    const biosKeys = ["F2", "Del", "F12", "F10", "F1", "F8", "Esc", "Tab", "F11", "Enter", "Pause"];
+    const filtered = biosKeys.filter((k) => k.toLowerCase() !== ans.toLowerCase());
+    const shuffled = [...filtered].sort(() => Math.random() - 0.5);
+    return shuffled.slice(0, 3);
+  }
+
+  // 2. Common Networking Ports (e.g., "80", "443", "22", "21", "53", "3306", "8080")
+  if (/^(80|443|22|21|23|25|53|110|143|3306|5432|8080|3000|27017|6379)$/.test(ans)) {
+    const ports = ["80", "443", "22", "21", "25", "53", "3306", "5432", "8080", "110", "143", "23"];
+    const filtered = ports.filter((p) => p !== ans);
+    const shuffled = [...filtered].sort(() => Math.random() - 0.5);
+    return shuffled.slice(0, 3);
+  }
+
+  // 3. HTTP Status Codes (e.g., "404", "200", "500", "401", "403")
+  if (/^(1\d\d|2\d\d|3\d\d|4\d\d|5\d\d)$/.test(ans) || /(status code|http)/i.test(q)) {
+    const httpCodes = ["200", "201", "301", "302", "400", "401", "403", "404", "409", "500", "502", "503"];
+    const filtered = httpCodes.filter((c) => c !== ans && !ans.includes(c));
+    const shuffled = [...filtered].sort(() => Math.random() - 0.5);
+    return shuffled.slice(0, 3);
+  }
+
+  // 4. Pure Numbers & Integer Offsets
+  const numMatch = ans.match(/^-?\d+(\.\d+)?$/);
+  if (numMatch) {
+    const val = parseFloat(ans);
+    const deltas =
+      difficultyLevel >= 3
+        ? [-1, 1, 2, -2]
+        : difficultyLevel === 2
+        ? [-5, 5, 2, -2, 10, -10]
+        : [-10, 10, 20, 50, -20, 100];
+    const generated = deltas
+      .map((d) => (Number.isInteger(val) ? String(Math.round(val + d)) : (val + d).toFixed(2)))
+      .filter((n) => n !== ans && parseFloat(n) >= 0);
+    if (generated.length >= 3) {
+      return [...new Set(generated)].slice(0, 3);
+    }
+  }
+
+  // 5. 4-Digit Years
+  if (/^\d{4}$/.test(ans)) {
+    const year = parseInt(ans, 10);
+    const diffs = difficultyLevel >= 3 ? [-1, 1, 2, -2] : [-4, 4, 10, -10, 2, -2];
+    return diffs.map((d) => String(year + d)).slice(0, 3);
+  }
+
+  // 6. Boolean / Binary terms
+  if (/^(true|false|yes|no)$/i.test(ans)) {
+    const isTrue = /^(true|yes)$/i.test(ans);
+    return isTrue ? ["False", "Null", "Undefined"] : ["True", "Null", "Undefined"];
+  }
+
+  // 7. Semantic matching from pool cards
+  const candidates = poolCards.filter(
+    (c) => c.answer.trim().toLowerCase() !== ans.toLowerCase()
+  );
+
+  const scored = candidates.map((cand) => {
+    let score = Math.random();
+
+    // Shared tags boost
+    const sharedTags = (cand.tags || []).filter((t) => (card.tags || []).includes(t)).length;
+    score += sharedTags * 5;
+
+    // Difficulty similarity boost
+    const diffDelta = Math.abs((cand.difficulty || 3) - 3);
+    score += (5 - diffDelta) * 1.5;
+
+    // Length similarity boost (so multiple choice options look balanced)
+    const lenDelta = Math.abs(cand.answer.length - ans.length);
+    if (lenDelta < 15) score += 3.5;
+    if (lenDelta < 6) score += 2.5;
+
+    return { answer: cand.answer.trim(), score };
+  });
+
+  scored.sort((a, b) => b.score - a.score);
+
+  const distractorAnswers: string[] = [];
+  for (const s of scored) {
+    if (!distractorAnswers.includes(s.answer) && s.answer.toLowerCase() !== ans.toLowerCase()) {
+      distractorAnswers.push(s.answer);
+    }
+    if (distractorAnswers.length >= 3) break;
+  }
+
+  // Fallback domain-consistent phrases if pool is small
+  const fallbackGeneric = [
+    "Alternative standard configuration",
+    "Inverse functional parameter",
+    "Secondary contextual condition",
+    "External protocol specification",
+  ];
+  let fIdx = 0;
+  while (distractorAnswers.length < 3) {
+    const f = fallbackGeneric[fIdx % fallbackGeneric.length];
+    if (!distractorAnswers.includes(f) && f.toLowerCase() !== ans.toLowerCase()) {
+      distractorAnswers.push(f);
+    }
+    fIdx++;
+  }
+
+  return distractorAnswers.slice(0, 3);
+}
+
+/**
+ * Generates 3 intelligent, plausible, and logically relative multiple-choice distractor options
+ * for a flashcard using DITroy AI with caching and graceful heuristic fallback.
+ *
+ * Difficulty levels:
+ * - Level 1: Standard (plausible options in the general domain)
+ * - Level 2: Close Concepts (same sub-category, related sibling items)
+ * - Level 3: Advanced Near-Misses (highly nuanced, tricky edge cases, commonly confused sibling terms)
+ */
+export async function generateSmartDistractorsWithAI(
+  card: { id?: string; question: string; answer: string; tags?: string[] },
+  options?: {
+    difficultyLevel?: number;
+    deckTitle?: string;
+    poolCards?: Array<{ id?: string; answer: string; tags?: string[]; difficulty?: number }>;
+  }
+): Promise<string[]> {
+  const level = options?.difficultyLevel || 1;
+  const cacheKey = `rf_ai_dist_${card.id || card.question.slice(0, 30)}_${level}`;
+
+  // 1. Check local cache
+  if (typeof window !== "undefined") {
+    try {
+      const cached = localStorage.getItem(cacheKey);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length >= 3) {
+          return parsed.slice(0, 3);
+        }
+      }
+    } catch {}
+  }
+
+  const levelDescription =
+    level >= 3
+      ? "Level 3 (Advanced / Hard: Highly nuanced near-misses, tricky edge cases, commonly confused sibling concepts, highly plausible alternatives)"
+      : level === 2
+      ? "Level 2 (Medium / Close Concepts: Same immediate sub-category, closely related sibling terms of the exact same type/format)"
+      : "Level 1 (Standard: Plausible options in the same general subject domain)";
+
+  const prompt = `You are DITroy, an expert educational assessment engine for Review Flash.
+Generate exactly 3 SMART, PLAUSIBLE, and LOGICALLY RELATIVE multiple-choice DISTRACTOR options (wrong answers) for this flashcard question.
+
+Context / Subject: "${options?.deckTitle || "Study Set"}"
+Question: "${card.question}"
+Correct Answer: "${card.answer}"
+Target Difficulty: ${levelDescription}
+
+CRITICAL RULES:
+1. The 3 distractors MUST match the EXACT concept category, logical type, and formatting of the correct answer:
+   - If the answer is a keyboard key (e.g., "F5"), distractors MUST be real keyboard keys (e.g., ["F2", "Del", "F12"]).
+   - If the answer is an organelle (e.g., "Mitochondria"), distractors MUST be real organelles (e.g., ["Ribosome", "Golgi apparatus", "Endoplasmic reticulum"]).
+   - If the answer is a command (e.g., "chmod"), distractors MUST be real related commands (e.g., ["chown", "ls -l", "umask"]).
+   - If the answer is a number/year, distractors MUST be realistic close values in the same context.
+2. None of the 3 distractors may be synonymous with or equivalent to the correct answer.
+3. Return ONLY a valid JSON array of 3 strings: ["Option 1", "Option 2", "Option 3"]`;
+
+  try {
+    const response = await ditroyClient.chat({
+      message: prompt,
+      conversation_id: "distractors-" + (card.id || Date.now()),
+    });
+
+    const parsed = extractJsonFromReply(response.reply);
+    if (Array.isArray(parsed) && parsed.length >= 3) {
+      const cleaned = parsed
+        .map((p) => String(p).trim())
+        .filter((p) => p.length > 0 && p.toLowerCase() !== card.answer.trim().toLowerCase())
+        .slice(0, 3);
+
+      if (cleaned.length === 3) {
+        if (typeof window !== "undefined") {
+          try {
+            localStorage.setItem(cacheKey, JSON.stringify(cleaned));
+          } catch {}
+        }
+        return cleaned;
+      }
+    }
+  } catch (err) {
+    console.warn("DITroy AI distractor fallback triggered:", err);
+  }
+
+  // 2. Fallback to smart heuristic if AI call fails or is offline
+  return generateHeuristicSmartDistractors(card, options?.poolCards || [], level);
+}
+
+/**
+ * Batch generates smart distractors for multiple cards in 1 efficient AI request.
+ */
+export async function generateBatchSmartDistractorsWithAI(
+  cards: Array<{ id: string; question: string; answer: string; tags?: string[] }>,
+  options?: {
+    difficultyLevel?: number;
+    deckTitle?: string;
+    poolCards?: Array<{ id?: string; answer: string; tags?: string[]; difficulty?: number }>;
+  }
+): Promise<Record<string, string[]>> {
+  const level = options?.difficultyLevel || 1;
+  const results: Record<string, string[]> = {};
+  const uncachedCards: Array<{ id: string; question: string; answer: string; tags?: string[] }> = [];
+
+  // Check cache for each card
+  for (const card of cards) {
+    const cacheKey = `rf_ai_dist_${card.id}_${level}`;
+    let hit = false;
+    if (typeof window !== "undefined") {
+      try {
+        const cached = localStorage.getItem(cacheKey);
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed) && parsed.length >= 3) {
+            results[card.id] = parsed.slice(0, 3);
+            hit = true;
+          }
+        }
+      } catch {}
+    }
+    if (!hit) {
+      uncachedCards.push(card);
+    }
+  }
+
+  if (uncachedCards.length === 0) {
+    return results;
+  }
+
+  // Target up to 8 cards per batch for optimal token and response speed
+  const targetCards = uncachedCards.slice(0, 8);
+  const prompt = `You are DITroy, an expert educational assessment engine.
+Generate exactly 3 SMART, PLAUSIBLE, and LOGICALLY RELATIVE multiple-choice DISTRACTOR options (wrong answers) for each of the following cards.
+
+Subject/Deck: "${options?.deckTitle || "Study Set"}"
+Target Difficulty: Level ${level} (Distractors MUST be of the EXACT SAME concept category, format, and syntax as the correct answer).
+
+Cards to process:
+${targetCards
+  .map((c, i) => `[Card ${i + 1}] ID: "${c.id}" | Question: "${c.question}" | Correct Answer: "${c.answer}"`)
+  .join("\n")}
+
+CRITICAL: Return ONLY a valid JSON object mapping each Card ID to an array of 3 distractor strings:
+{
+  "${targetCards[0]?.id || "id"}": ["Distractor A", "Distractor B", "Distractor C"]
+}`;
+
+  try {
+    const response = await ditroyClient.chat({
+      message: prompt,
+      conversation_id: "batch-distractors-" + Date.now(),
+    });
+
+    const parsed = extractJsonFromReply(response.reply);
+    if (parsed && typeof parsed === "object") {
+      for (const card of targetCards) {
+        const item = parsed[card.id] || parsed[card.question];
+        if (Array.isArray(item) && item.length >= 3) {
+          const cleaned = item
+            .map((s: any) => String(s).trim())
+            .filter((s) => s.length > 0 && s.toLowerCase() !== card.answer.trim().toLowerCase())
+            .slice(0, 3);
+
+          if (cleaned.length === 3) {
+            results[card.id] = cleaned;
+            if (typeof window !== "undefined") {
+              try {
+                localStorage.setItem(`rf_ai_dist_${card.id}_${level}`, JSON.stringify(cleaned));
+              } catch {}
+            }
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.warn("Batch DITroy AI distractor generation fallback triggered:", err);
+  }
+
+  // Fill any missing cards with smart heuristic
+  for (const card of cards) {
+    if (!results[card.id] || results[card.id].length < 3) {
+      results[card.id] = generateHeuristicSmartDistractors(card, options?.poolCards || [], level);
+    }
+  }
+
+  return results;
+}
+
 
 
 import {

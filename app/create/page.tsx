@@ -31,7 +31,23 @@ import {
   Wand2,
   Zap,
 } from "lucide-react";
-import { AuthorizedCollaborator, Deck, DeckPermissionRole, Flashcard, UserDeckRole } from "@/types/flashcard";
+import {
+  AuthorizedCollaborator,
+  Deck,
+  DeckPermissionRole,
+  DeckSetDivisionConfig,
+  Flashcard,
+  SetDivisionMode,
+  SetNamingStyle,
+  UserDeckRole,
+} from "@/types/flashcard";
+import {
+  divideCardsIntoSets,
+  getAvailableSetOptions,
+  getSetLabel,
+  PRESET_ITEMS_PER_SET,
+  PRESET_SET_COUNTS,
+} from "@/lib/setDivider";
 import {
   canUserEditDeck,
   createDeck,
@@ -442,6 +458,14 @@ function CreateContent() {
   const [activeDeckRole, setActiveDeckRole] = useState<UserDeckRole>("owner");
   const [activeDeckAuthorName, setActiveDeckAuthorName] = useState<string>("");
 
+  // Deck Set Division Configuration (e.g. Set A, Set B, 30 items per set, etc.)
+  const [setDivisionConfig, setSetDivisionConfig] = useState<DeckSetDivisionConfig>({
+    enabled: false,
+    mode: "count",
+    value: 2,
+    namingStyle: "letters",
+  });
+
   // Active Input Mode: 'bulk', 'ai', or 'rapid'
   const [inputTab, setInputTab] = useState<"bulk" | "ai" | "rapid">("bulk");
 
@@ -563,6 +587,16 @@ function CreateContent() {
           setShuffleQuestions(target.shuffleQuestions ?? false);
           setDefaultRole(target.accessControl?.defaultRole || "viewer");
           setAuthorizedUsers(target.accessControl?.authorizedUsers || []);
+          if (target.setDivision) {
+            setSetDivisionConfig(target.setDivision);
+          } else {
+            setSetDivisionConfig({
+              enabled: false,
+              mode: "count",
+              value: 2,
+              namingStyle: "letters",
+            });
+          }
           // Load all existing cards into the staging queue for full editing
           setStagedCards(
             target.cards.map((c) => ({
@@ -610,6 +644,16 @@ function CreateContent() {
       setShuffleQuestions(target.shuffleQuestions ?? false);
       setDefaultRole(target.accessControl?.defaultRole || "viewer");
       setAuthorizedUsers(target.accessControl?.authorizedUsers || []);
+      if (target.setDivision) {
+        setSetDivisionConfig(target.setDivision);
+      } else {
+        setSetDivisionConfig({
+          enabled: false,
+          mode: "count",
+          value: 2,
+          namingStyle: "letters",
+        });
+      }
       setStagedCards(
         target.cards.map((c) => ({
           tempId: c.id,
@@ -1133,6 +1177,7 @@ function CreateContent() {
             description: deckDescription.trim() || target?.description || "",
             tags: parsedTags.length > 0 ? parsedTags : (target?.tags || ["General"]),
             shuffleQuestions,
+            setDivision: setDivisionConfig.enabled ? setDivisionConfig : undefined,
             accessControl: {
               defaultRole: "viewer",
               visibility: "unlisted",
@@ -1189,6 +1234,7 @@ function CreateContent() {
             isPublic: target?.isPublic,
             shareCode: target?.shareCode,
             shuffleQuestions,
+            setDivision: setDivisionConfig.enabled ? setDivisionConfig : undefined,
             accessControl: {
               defaultRole,
               visibility: "unlisted",
@@ -1213,6 +1259,7 @@ function CreateContent() {
           description: deckDescription.trim(),
           tags: parsedTags.length > 0 ? parsedTags : ["General"],
           shuffleQuestions,
+          setDivision: setDivisionConfig.enabled ? setDivisionConfig : undefined,
           accessControl: {
             defaultRole,
             visibility: "unlisted",
@@ -1609,6 +1656,237 @@ function CreateContent() {
               </div>
             </div>
           )}
+          {/* DECK SET DIVISION SETTINGS (SETS A, B, C, D...) */}
+          <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4 space-y-3.5">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <label className="flex items-center gap-2 text-xs font-bold text-slate-200 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={setDivisionConfig.enabled}
+                  onChange={(e) =>
+                    setSetDivisionConfig((prev) => ({
+                      ...prev,
+                      enabled: e.target.checked,
+                    }))
+                  }
+                  className="h-4 w-4 rounded border-slate-700 accent-cyan-500 cursor-pointer"
+                />
+                <span className="flex items-center gap-1.5 text-cyan-300">
+                  <Layers size={14} className="text-cyan-400" />
+                  Divide into Study Sets (Set A, Set B, Set C...)
+                </span>
+              </label>
+
+              {setDivisionConfig.enabled && (
+                <div className="flex items-center gap-1.5 text-xs">
+                  <span className="text-[11px] text-slate-400 font-medium">Naming:</span>
+                  <div className="flex rounded-lg bg-slate-900 p-0.5 border border-slate-800">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setSetDivisionConfig((prev) => ({ ...prev, namingStyle: "letters" }))
+                      }
+                      className={`rounded px-2 py-0.5 text-[10px] font-bold transition cursor-pointer ${
+                        setDivisionConfig.namingStyle === "letters"
+                          ? "bg-cyan-500 text-slate-950"
+                          : "text-slate-400 hover:text-white"
+                      }`}
+                    >
+                      Set A, B, C...
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setSetDivisionConfig((prev) => ({ ...prev, namingStyle: "numbers" }))
+                      }
+                      className={`rounded px-2 py-0.5 text-[10px] font-bold transition cursor-pointer ${
+                        setDivisionConfig.namingStyle === "numbers"
+                          ? "bg-cyan-500 text-slate-950"
+                          : "text-slate-400 hover:text-white"
+                      }`}
+                    >
+                      Set 1, 2, 3...
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {setDivisionConfig.enabled && (
+              <div className="space-y-3 pt-2 border-t border-slate-800/80 animate-in fade-in duration-150">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                  {/* Mode 1: Divide by Number of Sets */}
+                  <div
+                    onClick={() =>
+                      setSetDivisionConfig((prev) => ({
+                        ...prev,
+                        mode: "count",
+                        value: prev.mode === "count" ? prev.value : 2,
+                      }))
+                    }
+                    className={`rounded-xl border p-3 cursor-pointer transition ${
+                      setDivisionConfig.mode === "count"
+                        ? "border-cyan-500/50 bg-cyan-950/20"
+                        : "border-slate-800 bg-slate-900/60 hover:border-slate-700"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-white">Divide in Even Sets</span>
+                      <span className="text-[10px] text-cyan-400 font-medium">Remainder in Last Set</span>
+                    </div>
+                    <p className="mt-1 text-[11px] text-slate-400">
+                      Splits into 2, 3, 4, etc. sets. If items are odd, extra card goes to the last set.
+                    </p>
+
+                    {setDivisionConfig.mode === "count" && (
+                      <div className="mt-2.5 flex flex-wrap gap-1.5">
+                        {PRESET_SET_COUNTS.map((cnt) => (
+                          <button
+                            key={cnt}
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSetDivisionConfig((prev) => ({
+                                ...prev,
+                                mode: "count",
+                                value: cnt,
+                              }));
+                            }}
+                            className={`rounded-lg px-2.5 py-1 text-xs font-bold transition cursor-pointer ${
+                              setDivisionConfig.value === cnt
+                                ? "bg-cyan-500 text-slate-950 shadow-sm"
+                                : "bg-slate-950 text-slate-300 border border-slate-800 hover:text-white"
+                            }`}
+                          >
+                            {cnt} Sets
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Mode 2: Divide by Max Items Per Set */}
+                  <div
+                    onClick={() =>
+                      setSetDivisionConfig((prev) => ({
+                        ...prev,
+                        mode: "size",
+                        value: prev.mode === "size" ? prev.value : 30,
+                      }))
+                    }
+                    className={`rounded-xl border p-3 cursor-pointer transition ${
+                      setDivisionConfig.mode === "size"
+                        ? "border-cyan-500/50 bg-cyan-950/20"
+                        : "border-slate-800 bg-slate-900/60 hover:border-slate-700"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-white">Max Items / Set</span>
+                      <span className="text-[10px] text-cyan-400 font-medium">Predefined &amp; Custom</span>
+                    </div>
+                    <p className="mt-1 text-[11px] text-slate-400">
+                      Sets a cap like 20, 30, 40, 45 items per set.
+                    </p>
+
+                    {setDivisionConfig.mode === "size" && (
+                      <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+                        {PRESET_ITEMS_PER_SET.map((sz) => (
+                          <button
+                            key={sz}
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSetDivisionConfig((prev) => ({
+                                ...prev,
+                                mode: "size",
+                                value: sz,
+                              }));
+                            }}
+                            className={`rounded-lg px-2 py-1 text-xs font-bold transition cursor-pointer ${
+                              setDivisionConfig.value === sz
+                                ? "bg-cyan-500 text-slate-950 shadow-sm"
+                                : "bg-slate-950 text-slate-300 border border-slate-800 hover:text-white"
+                            }`}
+                          >
+                            {sz}
+                          </button>
+                        ))}
+
+                        {/* Custom input */}
+                        <div className="flex items-center gap-1 ml-1" onClick={(e) => e.stopPropagation()}>
+                          <span className="text-[10px] text-slate-400">Custom:</span>
+                          <input
+                            type="number"
+                            min={2}
+                            value={setDivisionConfig.value}
+                            onChange={(e) => {
+                              const val = Math.max(2, parseInt(e.target.value, 10) || 2);
+                              setSetDivisionConfig((prev) => ({ ...prev, mode: "size", value: val }));
+                            }}
+                            className="w-12 rounded bg-slate-950 px-1 py-0.5 text-center font-mono text-xs font-bold text-cyan-300 border border-slate-800 focus:outline-none focus:border-cyan-400"
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Live Breakdown Preview */}
+                {stagedCards.length > 0 && (
+                  <div className="rounded-xl border border-slate-800/80 bg-slate-950 p-3 text-xs space-y-2">
+                    <div className="flex items-center justify-between text-[11px]">
+                      <span className="text-slate-400 font-semibold">
+                        Live Preview ({stagedCards.length} cards staged):
+                      </span>
+                      <span className="text-cyan-400 font-bold">
+                        {
+                          divideCardsIntoSets(
+                            stagedCards.map((sc) => ({
+                              id: sc.tempId,
+                              question: sc.question,
+                              answer: sc.answer,
+                              tags: sc.tags,
+                              difficulty: sc.difficulty,
+                              createdAt: Date.now(),
+                            })),
+                            setDivisionConfig,
+                            setDivisionConfig.namingStyle
+                          ).length
+                        }{" "}
+                        Sets Total
+                      </span>
+                    </div>
+
+                    <div className="flex flex-wrap gap-1.5">
+                      {divideCardsIntoSets(
+                        stagedCards.map((sc) => ({
+                          id: sc.tempId,
+                          question: sc.question,
+                          answer: sc.answer,
+                          tags: sc.tags,
+                          difficulty: sc.difficulty,
+                          createdAt: Date.now(),
+                        })),
+                        setDivisionConfig,
+                        setDivisionConfig.namingStyle
+                      ).map((s) => (
+                        <span
+                          key={s.setIndex}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-slate-800 bg-slate-900/90 px-2.5 py-1 text-xs text-slate-200"
+                        >
+                          <span className="font-bold text-cyan-300">{s.setName}:</span>
+                          <span>{s.cardCount} cards</span>
+                          <span className="text-[10px] text-slate-500 font-mono">
+                            (#{s.startIndex + 1}–#{s.endIndex})
+                          </span>
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
