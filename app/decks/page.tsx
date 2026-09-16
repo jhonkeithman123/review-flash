@@ -388,31 +388,37 @@ export default function DecksPage() {
         </div>
 
         {/* View Mode Toggle: Grid Tiles vs Compact List */}
-        <div className="flex items-center gap-1 rounded-2xl border border-slate-800 bg-slate-900/90 p-1 self-start sm:self-auto">
+        <div className="relative flex items-center gap-1 rounded-2xl border border-slate-800 bg-slate-900/90 p-1 self-start sm:self-auto overflow-hidden shadow-inner">
+          {/* Animated Sliding Pill Indicator */}
+          <span
+            className={`absolute top-1 bottom-1 w-[calc(50%-4px)] rounded-xl bg-cyan-500 shadow-md shadow-cyan-500/25 transition-transform duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] pointer-events-none z-0 ${
+              viewMode === "grid" ? "translate-x-0" : "translate-x-full ml-1"
+            }`}
+          />
           <button
             type="button"
             onClick={() => handleToggleViewMode("grid")}
             title="Grid Tile View"
-            className={`flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-semibold transition-all cursor-pointer ${
+            className={`relative z-10 flex items-center gap-1.5 rounded-xl px-3.5 py-1.5 text-xs font-semibold transition-colors duration-200 cursor-pointer ${
               viewMode === "grid"
-                ? "bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/20 font-bold"
+                ? "text-slate-950 font-bold"
                 : "text-slate-400 hover:text-white"
             }`}
           >
-            <LayoutGrid size={14} />
+            <LayoutGrid size={14} className={viewMode === "grid" ? "stroke-[2.5]" : ""} />
             <span>Grid</span>
           </button>
           <button
             type="button"
             onClick={() => handleToggleViewMode("list")}
             title="List Row View"
-            className={`flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-semibold transition-all cursor-pointer ${
+            className={`relative z-10 flex items-center gap-1.5 rounded-xl px-3.5 py-1.5 text-xs font-semibold transition-colors duration-200 cursor-pointer ${
               viewMode === "list"
-                ? "bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/20 font-bold"
+                ? "text-slate-950 font-bold"
                 : "text-slate-400 hover:text-white"
             }`}
           >
-            <List size={14} />
+            <List size={14} className={viewMode === "list" ? "stroke-[2.5]" : ""} />
             <span>List</span>
           </button>
         </div>
@@ -455,7 +461,7 @@ export default function DecksPage() {
         </div>
       ) : viewMode === "grid" ? (
         <div className="grid gap-5 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
-          {filteredDecks.map((deck) => {
+          {filteredDecks.map((deck, idx) => {
             const avgDiff = deck.cards.length
               ? (
                   deck.cards.reduce((acc, c) => acc + c.difficulty, 0) /
@@ -467,8 +473,9 @@ export default function DecksPage() {
 
             return (
               <div
-                key={deck.id}
-                className="group relative flex flex-col justify-between rounded-3xl border border-slate-800 bg-slate-900/90 p-5 shadow-xl transition hover:-translate-y-1 hover:border-cyan-500/50 hover:shadow-cyan-500/10 min-h-[260px]"
+                key={`${deck.id}-grid`}
+                style={{ animationDelay: `${Math.min(idx * 45, 360)}ms` }}
+                className="group relative flex flex-col justify-between rounded-3xl border border-slate-800 bg-slate-900/90 p-5 shadow-xl transition hover:-translate-y-1 hover:border-cyan-500/50 hover:shadow-cyan-500/10 min-h-[260px] animate-deck-morph-grid"
               >
                 <div>
                   {/* Top Bar */}
@@ -607,7 +614,7 @@ export default function DecksPage() {
       ) : (
         /* List Mode (Clean Horizontal Rows) */
         <div className="space-y-3">
-          {filteredDecks.map((deck) => {
+          {filteredDecks.map((deck, idx) => {
             const avgDiff = deck.cards.length
               ? (
                   deck.cards.reduce((acc, c) => acc + c.difficulty, 0) /
@@ -619,8 +626,9 @@ export default function DecksPage() {
 
             return (
               <div
-                key={deck.id}
-                className="group relative flex flex-col md:flex-row md:items-center md:justify-between gap-4 rounded-2xl border border-slate-800 bg-slate-900/90 p-4 shadow-lg hover:border-cyan-500/40 hover:bg-slate-900/95 transition-all duration-200"
+                key={`${deck.id}-list`}
+                style={{ animationDelay: `${Math.min(idx * 45, 360)}ms` }}
+                className="group relative flex flex-col md:flex-row md:items-center md:justify-between gap-4 rounded-2xl border border-slate-800 bg-slate-900/90 p-4 shadow-lg hover:border-cyan-500/40 hover:bg-slate-900/95 transition-all duration-200 animate-deck-morph-list"
               >
                 {/* Left: Info & Meta */}
                 <div className="flex-1 min-w-0 space-y-1.5">

@@ -1,36 +1,74 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# ReviewFlash ⚡
 
-## Getting Started
+> **AI-Accelerated Active Recall Flashcards, 3D Tactile Review & Adaptive Assessment Suite**
 
-First, run the development server:
+![ReviewFlash Banner](public/icon.png)
 
+[![Next.js 16](https://img.shields.io/badge/Next.js-16.3.3-000000?style=for-the-badge&logo=nextdotjs&logoColor=white)](https://nextjs.org)
+[![React 19](https://img.shields.io/badge/React-19.2.8-61DAFB?style=for-the-badge&logo=react&logoColor=black)](https://react.dev)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.0+-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org)
+[![Firebase](https://img.shields.io/badge/Firebase-Firestore-FFCA28?style=for-the-badge&logo=firebase&logoColor=black)](https://firebase.google.com)
+[![Tailwind CSS 4](https://img.shields.io/badge/Tailwind-CSS_4-38B2AC?style=for-the-badge&logo=tailwind-css&logoColor=white)](https://tailwindcss.com)
+[![Bun](https://img.shields.io/badge/Bun-1.4.0-FBF0DF?style=for-the-badge&logo=bun&logoColor=black)](https://bun.sh)
+
+---
+
+## 🌟 Key Features
+
+* **🧠 SM-2 Spaced Retrieval Engine**: Optimal review scheduling based on latency, retention factor, and mastery streaks.
+* **🎴 Physical 3D Card Physics**: Tactile 3D perspective dealing, emerald mastery bursts, rose review slides, and card flips.
+* **📈 3-Tier Adaptive Assessment**: Dynamic difficulty tiers with background **DITroy AI Smart Distractor** enrichment.
+* **🗂️ Study Deck Set Divider**: Partition large decks into manageable sets (`Set A, B, C...` or `Set 1, 2, 3...`) with odd remainder allocation.
+* **📐 Horizontal Deck Morph Animation**: Sideways expanding and shrinking length keyframes when toggling between Grid and List view modes.
+* **🎧 Study Music Lounge**: Background YouTube audio engine with Lo-Fi, Synthwave, Classical soundscapes and batch playlist importing.
+* **🎯 Hands-On Practical Quest**: Interactive forced-guidance tutoring with live spotlights, click-blockers, and confetti celebration.
+* **🤝 Sovereign Deck Forking**: Decoupled cloning allowing full ownership and independent card customization of shared decks.
+* **✨ Spring Blossoming Modals & Popovers**: Origin-anchored bloom transitions with GPU-accelerated spring curves.
+
+---
+
+## 🚀 Getting Started
+
+### 1. Prerequisites
+* [Bun](https://bun.sh) installed on your system.
+
+### 2. Installation & Setup
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
+# Clone the repository
+git clone https://github.com/jhonkeithman123/review-flash.git
+cd review-flash
+
+# Install dependencies using Bun
+bun install
+
+# Run the local development server
 bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000) in your browser.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+---
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## 📚 Project Documentation (`docs/`)
 
-## Learn More
+Explore in-depth documentation in the [`docs/`](./docs/) directory:
 
-To learn more about Next.js, take a look at the following resources:
+| Document | Description |
+| :--- | :--- |
+| 📖 [**`docs/ABOUT.md`**](./docs/ABOUT.md) | Platform overview, mission, core pillars, and creator profile (**Keith Virgenes**). |
+| 🏛️ [**`docs/ARCHITECTURE_AND_CS_CONCEPTS.md`**](./docs/ARCHITECTURE_AND_CS_CONCEPTS.md) | Comprehensive software architecture, design patterns, and computer science concepts. |
+| 📋 [**`docs/plan.md`**](./docs/plan.md) | Full master product plan, completed capabilities, and upcoming feature roadmap. |
+| 📜 [**`docs/CHANGELOG.md`**](./docs/CHANGELOG.md) | Detailed chronological release notes and bug fix logs across all versions. |
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+---
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## 👨‍💻 Creator & Maintainer
 
-## Deploy on Vercel
+* **Keith Virgenes (131fgh)** — Lead Architect & Developer
+* **GitHub**: [@jhonkeithman123](https://github.com/jhonkeithman123)
+* **Email**: [keithvirgenes17@gmail.com](mailto:keithvirgenes17@gmail.com)
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+---
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## 📄 License
+All rights reserved © 2026 ReviewFlash by Keith Virgenes.

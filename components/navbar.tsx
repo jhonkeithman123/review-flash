@@ -528,9 +528,9 @@ export function Navbar() {
                       setUserDropdownOpen(!userDropdownOpen);
                       setMoreDropdownOpen(false);
                     }}
-                    className={`inline-flex items-center gap-2 rounded-xl border px-2.5 py-1.5 text-xs transition cursor-pointer ${
+                    className={`inline-flex items-center gap-2 rounded-xl border px-2.5 py-1.5 text-xs transition-all duration-200 cursor-pointer active:scale-95 ${
                       userDropdownOpen
-                        ? "border-emerald-500/60 bg-emerald-500/15 text-emerald-200"
+                        ? "border-emerald-500/60 bg-emerald-500/15 text-emerald-200 shadow-sm shadow-emerald-500/10"
                         : "border-slate-800 bg-slate-900/90 text-slate-200 hover:border-slate-700"
                     }`}
                   >
@@ -540,14 +540,14 @@ export function Navbar() {
                     <span className="hidden sm:inline font-semibold max-w-[100px] truncate">
                       {user.displayName || user.email?.split("@")[0]}
                     </span>
-                    <ChevronDown size={13} className={`transition duration-150 ${userDropdownOpen ? "rotate-180 text-emerald-400" : "text-slate-500"}`} />
+                    <ChevronDown size={13} className={`transition-transform duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] ${userDropdownOpen ? "rotate-180 text-emerald-400" : "text-slate-500"}`} />
                   </button>
 
                   {/* User Floating Dropdown Menu */}
                   {userDropdownOpen && (
-                    <div className="absolute right-0 mt-2 w-64 rounded-2xl border border-slate-800 bg-slate-950/95 p-3 shadow-2xl backdrop-blur-2xl animate-in fade-in slide-in-from-top-2 duration-150 z-50 space-y-2.5">
+                    <div className="absolute right-0 mt-2 w-64 origin-top-right rounded-2xl border border-emerald-500/30 bg-slate-950/95 p-3 shadow-2xl shadow-emerald-950/40 backdrop-blur-2xl animate-dropdown-spring z-50 space-y-2.5">
                       {/* User Info Header */}
-                      <div className="flex items-center gap-2.5 pb-2.5 border-b border-slate-800/80">
+                      <div style={{ animationDelay: "0ms" }} className="flex items-center gap-2.5 pb-2.5 border-b border-slate-800/80 animate-dropdown-item">
                         <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-500/20 text-emerald-300 font-bold text-sm border border-emerald-500/40 shrink-0">
                           {user.displayName ? user.displayName[0].toUpperCase() : "U"}
                         </div>
@@ -564,8 +564,9 @@ export function Navbar() {
                       {/* 1-Click Copy ID Button */}
                       <button
                         type="button"
+                        style={{ animationDelay: "30ms" }}
                         onClick={handleCopyMyId}
-                        className="w-full flex items-center justify-between rounded-xl border border-slate-800 bg-slate-900/90 px-3 py-2 text-xs font-mono text-slate-300 hover:text-white hover:border-slate-700 transition cursor-pointer"
+                        className="w-full flex items-center justify-between rounded-xl border border-slate-800 bg-slate-900/90 px-3 py-2 text-xs font-mono text-slate-300 hover:text-white hover:border-emerald-500/50 hover:bg-slate-900 transition-all duration-150 active:scale-[0.98] cursor-pointer animate-dropdown-item"
                       >
                         <span className="text-[11px] truncate">
                           {copiedId ? "✅ Copied to Clipboard" : `ID: ${user.email || user.uid.slice(0, 14) + "…"}`}
@@ -576,74 +577,88 @@ export function Navbar() {
                       {/* Menu Links */}
                       <div className="space-y-1 pt-1">
                         <Link
-                          href="/decks"
+                          href="/about"
+                          style={{ animationDelay: "45ms" }}
                           onClick={() => setUserDropdownOpen(false)}
-                          className="flex items-center gap-2 rounded-xl px-2.5 py-1.5 text-xs text-slate-300 hover:bg-slate-900 hover:text-white transition"
+                          className="flex items-center gap-2 rounded-xl px-2.5 py-1.5 text-xs text-slate-300 hover:bg-slate-900 hover:text-white hover:translate-x-0.5 transition-all duration-150 animate-dropdown-item active:scale-[0.98]"
                         >
-                          <FolderKanban size={14} className="text-cyan-400" />
+                          <Sparkles size={14} className="text-cyan-400" />
+                          <span>About &amp; Creator</span>
+                        </Link>
+                        <Link
+                          href="/decks"
+                          style={{ animationDelay: "75ms" }}
+                          onClick={() => setUserDropdownOpen(false)}
+                          className="flex items-center gap-2 rounded-xl px-2.5 py-1.5 text-xs text-slate-300 hover:bg-slate-900 hover:text-white hover:translate-x-0.5 transition-all duration-150 animate-dropdown-item active:scale-[0.98]"
+                        >
+                          <FolderKanban size={14} className="text-teal-400" />
                           <span>My Study Decks</span>
                         </Link>
                         <Link
                           href="/help"
+                          style={{ animationDelay: "90ms" }}
                           onClick={() => setUserDropdownOpen(false)}
-                          className="flex items-center gap-2 rounded-xl px-2.5 py-1.5 text-xs text-slate-300 hover:bg-slate-900 hover:text-white transition"
+                          className="flex items-center gap-2 rounded-xl px-2.5 py-1.5 text-xs text-slate-300 hover:bg-slate-900 hover:text-white hover:translate-x-0.5 transition-all duration-150 animate-dropdown-item active:scale-[0.98]"
                         >
                           <HelpCircle size={14} className="text-indigo-400" />
                           <span>Guide &amp; FAQs</span>
                         </Link>
                         <Link
                           href="/support"
+                          style={{ animationDelay: "120ms" }}
                           onClick={() => setUserDropdownOpen(false)}
-                          className="flex items-center gap-2 rounded-xl px-2.5 py-1.5 text-xs text-slate-300 hover:bg-slate-900 hover:text-white transition"
+                          className="flex items-center gap-2 rounded-xl px-2.5 py-1.5 text-xs text-slate-300 hover:bg-slate-900 hover:text-white hover:translate-x-0.5 transition-all duration-150 animate-dropdown-item active:scale-[0.98]"
                         >
                           <Bug size={14} className="text-cyan-400" />
                           <span>Support &amp; Report Bug</span>
                         </Link>
                         <Link
                           href="/terms"
+                          style={{ animationDelay: "150ms" }}
                           onClick={() => setUserDropdownOpen(false)}
-                          className="flex items-center gap-2 rounded-xl px-2.5 py-1.5 text-xs text-slate-300 hover:bg-slate-900 hover:text-white transition"
+                          className="flex items-center gap-2 rounded-xl px-2.5 py-1.5 text-xs text-slate-300 hover:bg-slate-900 hover:text-white hover:translate-x-0.5 transition-all duration-150 animate-dropdown-item active:scale-[0.98]"
                         >
                           <Scale size={14} className="text-indigo-400" />
                           <span>Terms of Service</span>
                         </Link>
                         <Link
                           href="/privacy"
+                          style={{ animationDelay: "180ms" }}
                           onClick={() => setUserDropdownOpen(false)}
-                          className="flex items-center gap-2 rounded-xl px-2.5 py-1.5 text-xs text-slate-300 hover:bg-slate-900 hover:text-white transition"
+                          className="flex items-center gap-2 rounded-xl px-2.5 py-1.5 text-xs text-slate-300 hover:bg-slate-900 hover:text-white hover:translate-x-0.5 transition-all duration-150 animate-dropdown-item active:scale-[0.98]"
                         >
                           <Shield size={14} className="text-emerald-400" />
                           <span>Privacy Policy</span>
                         </Link>
                         <Link
                           href="/data-deletion"
+                          style={{ animationDelay: "210ms" }}
                           onClick={() => setUserDropdownOpen(false)}
-                          className="flex items-center gap-2 rounded-xl px-2.5 py-1.5 text-xs text-slate-300 hover:bg-slate-900 hover:text-white transition"
+                          className="flex items-center gap-2 rounded-xl px-2.5 py-1.5 text-xs text-slate-300 hover:bg-slate-900 hover:text-white hover:translate-x-0.5 transition-all duration-150 animate-dropdown-item active:scale-[0.98]"
                         >
                           <Trash2 size={14} className="text-rose-400" />
                           <span>Data Deletion</span>
                         </Link>
                         <button
                           type="button"
+                          style={{ animationDelay: "240ms" }}
                           onClick={handleOpenWhatsNew}
-                          className="w-full flex items-center gap-2 rounded-xl px-2.5 py-1.5 text-xs text-slate-300 hover:bg-slate-900 hover:text-white transition text-left cursor-pointer"
+                          className="w-full flex items-center gap-2 rounded-xl px-2.5 py-1.5 text-xs text-slate-300 hover:bg-slate-900 hover:text-white hover:translate-x-0.5 transition-all duration-150 text-left cursor-pointer animate-dropdown-item active:scale-[0.98]"
                         >
                           <Rocket size={14} className="text-amber-400" />
                           <div className="flex items-center justify-between flex-1">
                             <span>What&apos;s New</span>
-                            <span className="text-[10px] font-mono text-cyan-300 font-bold">v2.0.0</span>
+                            <span className="text-[10px] font-mono text-cyan-300 font-bold">{APP_VERSION}</span>
                           </div>
                         </button>
                       </div>
 
-
-
                       {/* Sign Out Button */}
-                      <div className="pt-2 border-t border-slate-800/80">
+                      <div style={{ animationDelay: "270ms" }} className="pt-2 border-t border-slate-800/80 animate-dropdown-item">
                         <button
                           type="button"
                           onClick={handleSignOut}
-                          className="w-full flex items-center justify-center gap-1.5 rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs font-semibold text-rose-300 hover:bg-rose-500/20 transition cursor-pointer"
+                          className="w-full flex items-center justify-center gap-1.5 rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs font-semibold text-rose-300 hover:bg-rose-500/20 hover:border-rose-500/50 transition-all duration-150 active:scale-95 cursor-pointer"
                         >
                           <LogOut size={13} />
                           <span>Sign Out</span>

@@ -91,6 +91,24 @@ const UPDATE_LOGS: VersionLog[] = [
         tags: ["Multiline Options", "Test Mode", "Staggered Cascade", "Choice Wrap"],
       },
       {
+        type: "feat",
+        title: "Deck Grid to List Sideways Length Morph Animation",
+        desc: "Switching view modes on the Decks page dynamically animates the physical dimensions of each deck card platform—stretching sideways into full list rows and shrinking horizontally into grid tiles with cascading staggered delays.",
+        tags: ["Sideways Morph", "Grid to List", "CSS Keyframes", "Deck Shelf"],
+      },
+      {
+        type: "feat",
+        title: "Review & Test Dropdown Spring Popovers & Cascades",
+        desc: "DeckSelector and DeckSetSelector dropdowns in Review and Test modes feature glassmorphic spring blossoming with rotating chevrons and cascading option entrances.",
+        tags: ["Dropdown Spring", "Glassmorphism", "Cascading Items", "Tactile Easing"],
+      },
+      {
+        type: "feat",
+        title: "Question Overview Modal Origin-Based Bloom & Shrink",
+        desc: "The Question Overview modal in Test mode captures the button's exact screen coordinates, blossoming from the button to the viewport center and shrinking back on dismissal without layout jitter.",
+        tags: ["Modal Blossom", "Origin Tracking", "GPU Transforms", "Test Mode"],
+      },
+      {
         type: "improve",
         title: "Study Deck Set Division & Remainder-to-Last Allocation",
         desc: "Divide study sets into Set A, B, C, D... or Set 1, 2, 3... with predefined (20, 30, 40, 45, 50) or custom splits. Odd remainder items are automatically merged into the final set without creating awkward remainder sets.",
@@ -101,6 +119,12 @@ const UPDATE_LOGS: VersionLog[] = [
         title: "Firestore Write Stream Exhaustion Throttling",
         desc: "Resolved Firestore [code=resource-exhausted] write stream exceptions during rapid review rating and test taking by introducing optimistic local state updates and async background write debouncing.",
         tags: ["Firestore Fix", "Resource Exhaustion Guard", "Write Throttling"],
+      },
+      {
+        type: "improve",
+        title: "Codebase Cleanup, Direct Naming & Architecture Docs",
+        desc: "Refactored ambiguous function names into concise, direct identifiers across core service layers, linked centralized versioning in account menus, verified complete environment variable isolation, and authored comprehensive Architecture & Computer Science documentation.",
+        tags: ["Clean Code", "Concise Naming", "Centralized Version", "CS Concepts"],
       },
     ],
   },

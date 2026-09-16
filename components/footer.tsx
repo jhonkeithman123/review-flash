@@ -12,6 +12,7 @@ import {
   Rocket,
   Scale,
   Shield,
+  Sparkles,
   Trash2,
 } from "lucide-react";
 import { APP_VERSION } from "@/lib/version";
@@ -38,6 +39,14 @@ export function Footer() {
 
         {/* Legal & Policy Quick Buttons */}
         <div className="flex flex-wrap items-center justify-center gap-2 sm:gap-3">
+          <Link
+            href="/about"
+            className="flex items-center gap-1.5 rounded-xl border border-cyan-500/30 bg-cyan-950/20 hover:bg-cyan-950/40 hover:border-cyan-500/50 px-3 py-1.5 text-xs text-cyan-300 hover:text-cyan-200 transition cursor-pointer"
+          >
+            <Sparkles size={13} className="text-cyan-400" />
+            <span>About</span>
+          </Link>
+
           <Link
             href="/terms"
             className="flex items-center gap-1.5 rounded-xl border border-slate-800 bg-slate-900/60 hover:bg-slate-900 hover:border-slate-700 px-3 py-1.5 text-xs text-slate-300 hover:text-white transition cursor-pointer"

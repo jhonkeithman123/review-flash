@@ -26,7 +26,6 @@ import {
   Plus,
   RotateCcw,
   Shuffle,
-  SlidersHorizontal,
   Sparkles,
   Timer,
   Trophy,
@@ -39,6 +38,7 @@ import { ProgressStats } from "@/components/progress-stats";
 import { DeckSelector } from "@/components/deck-selector";
 import { DeckSetSelector } from "@/components/deck-set-selector";
 import { TestHistoryModal } from "@/components/test-history-modal";
+import { QuestionOverviewModal } from "@/components/question-overview-modal";
 import {
   clearActiveTestState,
   fetchActiveTestState,
@@ -163,6 +163,7 @@ function TestContent() {
   const [isGeneratingAiDistractors, setIsGeneratingAiDistractors] = useState<boolean>(false);
   const [timeLeft, setTimeLeft] = useState<number>(180);
   const [isOverviewDrawerOpen, setIsOverviewDrawerOpen] = useState(false);
+  const [overviewOrigin, setOverviewOrigin] = useState<{ x: number; y: number } | null>(null);
   const [overviewFilter, setOverviewFilter] = useState<"all" | "unanswered" | "answered" | "flagged">("all");
   const [isConfirmSubmitOpen, setIsConfirmSubmitOpen] = useState(false);
   const [autoAdvance, setAutoAdvance] = useState(true);
@@ -193,6 +194,20 @@ function TestContent() {
       }
     }
     setIsHistoryModalOpen(true);
+  };
+
+  const handleOpenOverviewModal = (e?: React.MouseEvent) => {
+    if (e && (e.clientX !== 0 || e.clientY !== 0)) {
+      setOverviewOrigin({ x: e.clientX, y: e.clientY });
+    } else {
+      const rect = (e?.currentTarget as HTMLElement)?.getBoundingClientRect?.();
+      if (rect) {
+        setOverviewOrigin({ x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 });
+      } else {
+        setOverviewOrigin(null);
+      }
+    }
+    setIsOverviewDrawerOpen(true);
   };
 
   useEffect(() => {
@@ -794,15 +809,7 @@ function TestContent() {
 
   const activeTier = getDifficultyTierName(currentAdaptiveBoost);
 
-  // Filter questions for the Overview Drawer
-  const filteredOverviewQuestions = useMemo(() => {
-    return questions.map((q, idx) => ({ q, idx })).filter(({ idx }) => {
-      if (overviewFilter === "answered") return !!userAnswers[idx];
-      if (overviewFilter === "unanswered") return !userAnswers[idx];
-      if (overviewFilter === "flagged") return flaggedQuestions.has(idx);
-      return true;
-    });
-  }, [questions, overviewFilter, userAnswers, flaggedQuestions]);
+
 
   if (loading) {
     return (
@@ -1163,38 +1170,6 @@ function TestContent() {
             <span>Scores &amp; History</span>
           </button>
 
-          {/* Question Count Preset Selector */}
-          <div className="flex items-center gap-1 rounded-full border border-slate-800 bg-slate-900/90 px-3 py-1.5 text-xs text-slate-300">
-            <SlidersHorizontal size={12} className="text-slate-400" />
-            <select
-              value={questionCountPreset}
-              onChange={(e) => {
-                setQuestionCountPreset(e.target.value);
-                setQuestionIndex(0);
-                setUserAnswers({});
-              }}
-              className="bg-transparent text-xs font-semibold text-cyan-300 focus:outline-none cursor-pointer"
-            >
-              <option value="all" className="bg-slate-900 text-slate-100">
-                All Items ({filteredCards.length})
-              </option>
-              {filteredCards.length > 5 && (
-                <option value="5" className="bg-slate-900 text-slate-100">
-                  Quick 5
-                </option>
-              )}
-              {filteredCards.length > 10 && (
-                <option value="10" className="bg-slate-900 text-slate-100">
-                  Top 10
-                </option>
-              )}
-              {filteredCards.length > 20 && (
-                <option value="20" className="bg-slate-900 text-slate-100">
-                  20 Items
-                </option>
-              )}
-            </select>
-          </div>
 
           {/* Shuffle Questions Toggle */}
           <button
@@ -1286,11 +1261,11 @@ function TestContent() {
                 </span>
               </div>
 
-              {/* Button to open full Question Overview Drawer */}
+              {/* Button to open full Question Overview Modal */}
               <button
                 type="button"
-                onClick={() => setIsOverviewDrawerOpen(true)}
-                className="inline-flex items-center gap-1.5 rounded-xl border border-cyan-500/40 bg-cyan-500/10 px-3 py-1.5 text-xs font-bold text-cyan-300 hover:bg-cyan-500/20 transition cursor-pointer shadow-sm"
+                onClick={(e) => handleOpenOverviewModal(e)}
+                className="inline-flex items-center gap-1.5 rounded-xl border border-cyan-500/40 bg-cyan-500/10 px-3 py-1.5 text-xs font-bold text-cyan-300 hover:bg-cyan-500/20 hover:border-cyan-400 transition cursor-pointer shadow-sm active:scale-95"
               >
                 <ListOrdered size={14} />
                 <span>Question Overview 📑</span>
@@ -1467,178 +1442,28 @@ function TestContent() {
         </div>
       )}
 
-      {/* 5. QUESTION OVERVIEW DRAWER / MODAL (WITH PREVIEWS) */}
-      {isOverviewDrawerOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4 animate-in fade-in duration-150">
-          <div className="relative flex flex-col w-full max-w-2xl max-h-[85dvh] rounded-3xl border border-slate-800 bg-slate-900/95 shadow-2xl overflow-hidden">
-            {/* Drawer Header */}
-            <div className="flex items-center justify-between border-b border-slate-800 px-5 py-4 bg-slate-950/80">
-              <div className="flex items-center gap-2.5">
-                <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-cyan-500/20 text-cyan-300">
-                  <ListOrdered size={18} />
-                </div>
-                <div>
-                  <h3 className="text-base font-bold text-white">All Test Questions</h3>
-                  <p className="text-xs text-slate-400">
-                    {answeredCount} answered · {unansweredCount} remaining
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsOverviewDrawerOpen(false)}
-                className="rounded-xl p-2 text-slate-400 hover:bg-slate-800 hover:text-white transition cursor-pointer"
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            {/* Filter Tabs */}
-            <div className="flex items-center gap-1.5 border-b border-slate-800/80 px-5 py-2.5 bg-slate-950/40 overflow-x-auto text-xs">
-              <button
-                type="button"
-                onClick={() => setOverviewFilter("all")}
-                className={`rounded-lg px-3 py-1 font-semibold transition cursor-pointer ${
-                  overviewFilter === "all"
-                    ? "bg-cyan-500 text-slate-950 font-bold"
-                    : "text-slate-400 hover:text-slate-200"
-                }`}
-              >
-                All ({questions.length})
-              </button>
-              <button
-                type="button"
-                onClick={() => setOverviewFilter("unanswered")}
-                className={`rounded-lg px-3 py-1 font-semibold transition cursor-pointer ${
-                  overviewFilter === "unanswered"
-                    ? "bg-amber-500 text-slate-950 font-bold"
-                    : "text-slate-400 hover:text-slate-200"
-                }`}
-              >
-                Unanswered ({unansweredCount})
-              </button>
-              <button
-                type="button"
-                onClick={() => setOverviewFilter("answered")}
-                className={`rounded-lg px-3 py-1 font-semibold transition cursor-pointer ${
-                  overviewFilter === "answered"
-                    ? "bg-emerald-500 text-slate-950 font-bold"
-                    : "text-slate-400 hover:text-slate-200"
-                }`}
-              >
-                Answered ({answeredCount})
-              </button>
-              <button
-                type="button"
-                onClick={() => setOverviewFilter("flagged")}
-                className={`rounded-lg px-3 py-1 font-semibold transition cursor-pointer ${
-                  overviewFilter === "flagged"
-                    ? "bg-purple-500 text-white font-bold"
-                    : "text-slate-400 hover:text-slate-200"
-                }`}
-              >
-                Flagged ({flaggedQuestions.size})
-              </button>
-            </div>
-
-            {/* Question Previews List */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-2.5">
-              {filteredOverviewQuestions.length === 0 ? (
-                <div className="py-8 text-center text-xs text-slate-500">
-                  No questions match this filter.
-                </div>
-              ) : (
-                filteredOverviewQuestions.map(({ q, idx }) => {
-                  const isCurrent = idx === questionIndex;
-                  const selectedAnswer = userAnswers[idx];
-                  const isFlagged = flaggedQuestions.has(idx);
-
-                  return (
-                    <div
-                      key={idx}
-                      onClick={() => {
-                        setQuestionDirection(idx > questionIndex ? "next" : "prev");
-                        setQuestionIndex(idx);
-                        setIsOverviewDrawerOpen(false);
-                      }}
-                      className={`group flex items-start gap-3 rounded-2xl border p-3 text-left transition-all cursor-pointer ${
-                        isCurrent
-                          ? "border-cyan-400 bg-cyan-500/10 shadow-sm shadow-cyan-500/10"
-                          : selectedAnswer
-                          ? "border-emerald-500/30 bg-slate-950/60 hover:border-emerald-500/50"
-                          : "border-slate-800 bg-slate-950/40 hover:border-slate-700 hover:bg-slate-900/60"
-                      }`}
-                    >
-                      {/* Pill Badge */}
-                      <div
-                        className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-xl font-mono text-xs font-bold ${
-                          isCurrent
-                            ? "bg-cyan-400 text-slate-950"
-                            : selectedAnswer
-                            ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/40"
-                            : "bg-slate-800 text-slate-400"
-                        }`}
-                      >
-                        {idx + 1}
-                      </div>
-
-                      {/* Question Text Preview & Status */}
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="text-[11px] font-bold text-slate-400">
-                            Difficulty {q.card.difficulty}/5
-                          </span>
-                          {isFlagged && (
-                            <span className="text-[10px] text-amber-400 font-semibold bg-amber-500/10 border border-amber-500/30 px-1.5 py-0.5 rounded">
-                              🚩 Flagged
-                            </span>
-                          )}
-                        </div>
-
-                        {/* QUESTION TEXT PREVIEW SNIPPET */}
-                        <p className="mt-1 text-xs sm:text-sm font-medium text-slate-100 line-clamp-2 leading-snug">
-                          {q.card.question}
-                        </p>
-
-                        {/* Answer Status */}
-                        <div className="mt-1.5 flex items-center gap-1.5 text-[11px]">
-                          {selectedAnswer ? (
-                            <span className="text-emerald-400 truncate flex items-center gap-1">
-                              <Check size={12} />
-                              <span className="truncate">Selected: {selectedAnswer}</span>
-                            </span>
-                          ) : (
-                            <span className="text-slate-500 italic">⏳ Not answered yet</span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })
-              )}
-            </div>
-
-            {/* Bottom Actions */}
-            <div className="border-t border-slate-800 p-3.5 bg-slate-950 flex justify-between items-center text-xs">
-              <span className="text-slate-400">Click any card to jump immediately</span>
-              <button
-                type="button"
-                onClick={() => {
-                  setIsOverviewDrawerOpen(false);
-                  if (unansweredCount > 0) {
-                    setIsConfirmSubmitOpen(true);
-                  } else {
-                    void handleFinishQuiz();
-                  }
-                }}
-                className="rounded-xl bg-emerald-500 px-4 py-2 font-bold text-slate-950 hover:bg-emerald-400 transition cursor-pointer"
-              >
-                Submit Quiz
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* 5. QUESTION OVERVIEW MODAL (SPRING GROW & SHADOW BLOSSOM) */}
+      <QuestionOverviewModal
+        isOpen={isOverviewDrawerOpen}
+        onClose={() => setIsOverviewDrawerOpen(false)}
+        origin={overviewOrigin}
+        questions={questions}
+        questionIndex={questionIndex}
+        userAnswers={userAnswers}
+        flaggedQuestions={flaggedQuestions}
+        initialFilter={overviewFilter}
+        onSelectQuestion={(idx) => {
+          setQuestionDirection(idx > questionIndex ? "next" : "prev");
+          setQuestionIndex(idx);
+        }}
+        onSubmitQuiz={() => {
+          if (unansweredCount > 0) {
+            setIsConfirmSubmitOpen(true);
+          } else {
+            void handleFinishQuiz();
+          }
+        }}
+      />
 
       {/* 6. SUBMIT CONFIRMATION DIALOG */}
       {isConfirmSubmitOpen && (
