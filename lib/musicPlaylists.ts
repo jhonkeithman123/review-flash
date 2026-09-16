@@ -308,7 +308,7 @@ export interface MusicPlayerSettings {
   autoFailover: boolean;
 }
 
-export function loadStoredMusicSettings(): MusicPlayerSettings {
+export function loadMusicSettings(): MusicPlayerSettings {
   if (typeof window === "undefined") {
     return {
       volume: 45,
@@ -337,7 +337,7 @@ export function loadStoredMusicSettings(): MusicPlayerSettings {
   };
 }
 
-export function saveStoredMusicSettings(settings: MusicPlayerSettings) {
+export function saveMusicSettings(settings: MusicPlayerSettings) {
   if (typeof window === "undefined") return;
   try {
     localStorage.setItem(STORAGE_MUSIC_SETTINGS, JSON.stringify(settings));
@@ -372,7 +372,7 @@ function sanitizePlaylistsForFirestore(playlists: StudyPlaylist[]): any[] {
   });
 }
 
-export function loadUserCustomPlaylists(userId?: string): StudyPlaylist[] {
+export function loadLocalPlaylists(userId?: string): StudyPlaylist[] {
   if (typeof window === "undefined") return [];
   try {
     const targetUid = userId || auth?.currentUser?.uid;
@@ -387,8 +387,8 @@ export function loadUserCustomPlaylists(userId?: string): StudyPlaylist[] {
   return [];
 }
 
-export async function fetchCloudUserCustomPlaylists(userId?: string): Promise<StudyPlaylist[]> {
-  const localList = loadUserCustomPlaylists(userId);
+export async function fetchCloudPlaylists(userId?: string): Promise<StudyPlaylist[]> {
+  const localList = loadLocalPlaylists(userId);
   const targetUid = userId || auth?.currentUser?.uid;
 
   if (!targetUid || !isFirebaseConfigured || !db) {
@@ -416,7 +416,7 @@ export async function fetchCloudUserCustomPlaylists(userId?: string): Promise<St
   return localList;
 }
 
-export function saveUserCustomPlaylists(playlists: StudyPlaylist[], userId?: string) {
+export function saveLocalPlaylists(playlists: StudyPlaylist[], userId?: string) {
   if (typeof window === "undefined") return;
 
   const targetUid = userId || auth?.currentUser?.uid;
@@ -445,10 +445,17 @@ export function saveUserCustomPlaylists(playlists: StudyPlaylist[], userId?: str
         },
         { merge: true }
       ).catch((err) => {
-        console.warn("Failed to sync custom playlists to Firestore:", err);
+        console.warn("Background cloud playlist sync error:", err);
       });
-    } catch (e) {
-      console.warn("Failed to initiate Firestore playlist sync:", e);
+    } catch (err) {
+      console.warn("Could not schedule cloud playlist sync:", err);
     }
   }
 }
+
+// Aliases for backwards compatibility
+export const loadStoredMusicSettings = loadMusicSettings;
+export const saveStoredMusicSettings = saveMusicSettings;
+export const loadUserCustomPlaylists = loadLocalPlaylists;
+export const fetchCloudUserCustomPlaylists = fetchCloudPlaylists;
+export const saveUserCustomPlaylists = saveLocalPlaylists;

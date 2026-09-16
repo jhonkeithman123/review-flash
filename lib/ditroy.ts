@@ -3,10 +3,10 @@ import { DitroyClient, HealthStatus } from "@131fgh/ditroy-client";
 export const DITROY_RENDER_URL = "https://ditroy.onrender.com";
 
 /**
- * Resolves the active DITroy API endpoint.
+ * Resolves the active DITroy API endpoint from environment variables.
  * Auto-corrects typo 'ditroy-ai.onrender.com' to 'ditroy.onrender.com'.
  */
-export function getResolvedDitroyUrl(): string {
+export function getDitroyApiUrl(): string {
   const envUrl = process.env.NEXT_PUBLIC_DITROY_API_URL || process.env.DITROY_API_URL;
   if (!envUrl || envUrl.trim() === "" || envUrl.includes("ditroy-ai.onrender.com")) {
     return DITROY_RENDER_URL;
@@ -14,12 +14,15 @@ export function getResolvedDitroyUrl(): string {
   return envUrl.trim();
 }
 
+// Backwards-compatible alias
+export const getResolvedDitroyUrl = getDitroyApiUrl;
+
 /**
  * Universal DITroy AI client instance for Review Flash.
  * Connects to the cloud DITroy AI backend on Render (https://ditroy.onrender.com) or custom override.
  */
 export const ditroyClient = new DitroyClient({
-  baseUrl: getResolvedDitroyUrl(),
+  baseUrl: getDitroyApiUrl(),
   timeoutMs: 90000,
 });
 
@@ -68,7 +71,7 @@ export async function checkDITroyHealth(): Promise<{
 /**
  * Robustly parses JSON from LLM output (handles markdown code blocks, backticks, conversational preamble).
  */
-function extractJsonFromReply(reply: string): any {
+export function parseJsonResponse(reply: string): any {
   if (!reply) return null;
 
   // 1. Try direct JSON parse
@@ -103,12 +106,15 @@ function extractJsonFromReply(reply: string): any {
   return null;
 }
 
+// Backwards-compatible alias
+export const extractJsonFromReply = parseJsonResponse;
+
 /**
- * Smart AI Parser with dual modes:
+ * Extracts or synthesizes structured flashcard Q&A pairs from text using DITroy AI:
  * - "detect-qa": Finds, extracts, and cleans existing questions and answers in messy or irregular text.
  * - "from-context": Reads raw notes, lecture transcripts, or textbook chapters and synthesizes new Q&A cards covering key concepts.
  */
-export async function smartAutoDetectWithAI(
+export async function extractFlashcardsWithAI(
   rawContent: string,
   mode: "detect-qa" | "from-context" = "from-context",
   options?: {
@@ -257,9 +263,9 @@ Example JSON output:
 }
 
 /**
- * Generates structured flashcards from unstructured text, lecture notes, or study topics.
+ * Generates structured flashcards from notes, lecture transcripts, or study topics.
  */
-export async function generateFlashcardsWithAI(
+export async function generateFlashcardsFromNotes(
   rawContent: string,
   options?: {
     topic?: string;
@@ -267,15 +273,19 @@ export async function generateFlashcardsWithAI(
     tags?: string[];
   }
 ): Promise<FlashcardGenerationResult> {
-  return smartAutoDetectWithAI(rawContent, "from-context", options);
+  return extractFlashcardsWithAI(rawContent, "from-context", options);
 }
 
+// Aliases
+export const smartAutoDetectWithAI = extractFlashcardsWithAI;
+export const generateFlashcardsWithAI = generateFlashcardsFromNotes;
+
 /**
- * Smart Heuristic Distractor Generator
+ * Heuristic Distractor Generator
  * Produces logically relative, domain-accurate alternatives based on question/answer semantics
  * (e.g. function keys, ports, years, numbers, booleans, or closely scored deck sibling terms).
  */
-export function generateHeuristicSmartDistractors(
+export function generateHeuristicDistractors(
   card: { question: string; answer: string; tags?: string[] },
   poolCards: Array<{ id?: string; answer: string; tags?: string[]; difficulty?: number }> = [],
   difficultyLevel: number = 1
@@ -391,6 +401,9 @@ export function generateHeuristicSmartDistractors(
   return distractorAnswers.slice(0, 3);
 }
 
+// Backwards-compatible alias
+export const generateHeuristicSmartDistractors = generateHeuristicDistractors;
+
 /**
  * Generates 3 intelligent, plausible, and logically relative multiple-choice distractor options
  * for a flashcard using DITroy AI with caching and graceful heuristic fallback.
@@ -400,7 +413,7 @@ export function generateHeuristicSmartDistractors(
  * - Level 2: Close Concepts (same sub-category, related sibling items)
  * - Level 3: Advanced Near-Misses (highly nuanced, tricky edge cases, commonly confused sibling terms)
  */
-export async function generateSmartDistractorsWithAI(
+export async function generateDistractorsWithAI(
   card: { id?: string; question: string; answer: string; tags?: string[] },
   options?: {
     difficultyLevel?: number;
@@ -475,13 +488,16 @@ CRITICAL RULES:
   }
 
   // 2. Fallback to smart heuristic if AI call fails or is offline
-  return generateHeuristicSmartDistractors(card, options?.poolCards || [], level);
+  return generateHeuristicDistractors(card, options?.poolCards || [], level);
 }
+
+// Backwards-compatible alias
+export const generateSmartDistractorsWithAI = generateDistractorsWithAI;
 
 /**
  * Batch generates smart distractors for multiple cards in 1 efficient AI request.
  */
-export async function generateBatchSmartDistractorsWithAI(
+export async function generateBatchDistractorsWithAI(
   cards: Array<{ id: string; question: string; answer: string; tags?: string[] }>,
   options?: {
     difficultyLevel?: number;
@@ -570,19 +586,20 @@ CRITICAL: Return ONLY a valid JSON object mapping each Card ID to an array of 3 
   // Fill any missing cards with smart heuristic
   for (const card of cards) {
     if (!results[card.id] || results[card.id].length < 3) {
-      results[card.id] = generateHeuristicSmartDistractors(card, options?.poolCards || [], level);
+      results[card.id] = generateHeuristicDistractors(card, options?.poolCards || [], level);
     }
   }
 
   return results;
 }
 
-
+// Backwards-compatible alias
+export const generateBatchSmartDistractorsWithAI = generateBatchDistractorsWithAI;
 
 import {
-  loadLearnedFactsFromFirebase,
-  saveAiMessageToFirebase,
-  saveLearnedFactToFirebase,
+  fetchLearnedFacts,
+  saveAiMessage,
+  saveLearnedFact,
   StoredAiMessage,
 } from "./aiMemoryService";
 
@@ -637,7 +654,7 @@ ${sc.specificMention ? `- Targeted Focus (@mention): ${sc.specificMention}` : ""
   // Retrieve persistent study facts stored in Firebase Firestore
   let learnedFactsPrompt = "";
   try {
-    const facts = await loadLearnedFactsFromFirebase();
+    const facts = await fetchLearnedFacts();
     if (facts.length > 0) {
       learnedFactsPrompt = `\n[Learned Facts & Student Profile from Firebase Memory:\n${facts.slice(-10).map((f) => `• ${f}`).join("\n")}\n]\n`;
     }
@@ -683,7 +700,7 @@ Student Query: "${userQuery}"`;
 
   // 1. Save user query to Firebase Firestore
   const userMsgId = "user-" + Date.now();
-  void saveAiMessageToFirebase(conversationId, {
+  void saveAiMessage(conversationId, {
     id: userMsgId,
     role: "user",
     content: userQuery,
@@ -706,7 +723,7 @@ Student Query: "${userQuery}"`;
 
     // 2. Save AI reply to Firebase Firestore
     const aiMsgId = "ai-" + Date.now();
-    void saveAiMessageToFirebase(conversationId, {
+    void saveAiMessage(conversationId, {
       id: aiMsgId,
       role: "assistant",
       content: reply,
@@ -716,7 +733,7 @@ Student Query: "${userQuery}"`;
 
     // 3. If the user shared a fact or card concept, persist to long-term Firebase memory
     if (context?.currentCard?.question && context?.currentCard?.answer) {
-      void saveLearnedFactToFirebase(
+      void saveLearnedFact(
         `Concept: ${context.currentCard.question} = ${context.currentCard.answer}`
       );
     }

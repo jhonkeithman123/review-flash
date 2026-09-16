@@ -72,7 +72,7 @@ function getFactsDocRef() {
 /**
  * Save an AI chat message to Firestore under the user's conversation.
  */
-export async function saveAiMessageToFirebase(
+export async function saveAiMessage(
   conversationId: string,
   message: StoredAiMessage,
   conversationTitle?: string
@@ -121,9 +121,9 @@ export async function saveAiMessageToFirebase(
 }
 
 /**
- * Load all messages for a conversation from Firebase Firestore.
+ * Fetch all messages for a conversation from Firestore.
  */
-export async function loadAiMessagesFromFirebase(
+export async function fetchAiMessages(
   conversationId: string,
   maxLimit: number = 50
 ): Promise<StoredAiMessage[]> {
@@ -156,7 +156,7 @@ export async function loadAiMessagesFromFirebase(
 /**
  * List all saved AI conversation sessions for current user from Firestore.
  */
-export async function loadUserAiConversationsFromFirebase(): Promise<StoredAiConversation[]> {
+export async function fetchUserAiConversations(): Promise<StoredAiConversation[]> {
   if (!isFirebaseConfigured || !db) return [];
 
   try {
@@ -186,7 +186,7 @@ export async function loadUserAiConversationsFromFirebase(): Promise<StoredAiCon
 /**
  * Save a learned study fact / user preference into Firestore AI memory.
  */
-export async function saveLearnedFactToFirebase(fact: string): Promise<void> {
+export async function saveLearnedFact(fact: string): Promise<void> {
   if (!isFirebaseConfigured || !db) return;
 
   try {
@@ -216,7 +216,7 @@ export async function saveLearnedFactToFirebase(fact: string): Promise<void> {
 /**
  * Retrieve all learned study facts stored in Firebase Firestore.
  */
-export async function loadLearnedFactsFromFirebase(): Promise<string[]> {
+export async function fetchLearnedFacts(): Promise<string[]> {
   if (!isFirebaseConfigured || !db) return [];
 
   try {
@@ -237,7 +237,7 @@ export async function loadLearnedFactsFromFirebase(): Promise<string[]> {
 /**
  * Delete an entire AI conversation from Firebase Firestore.
  */
-export async function deleteAiConversationFromFirebase(conversationId: string): Promise<void> {
+export async function deleteAiConversation(conversationId: string): Promise<void> {
   if (!isFirebaseConfigured || !db) return;
 
   try {
@@ -248,3 +248,11 @@ export async function deleteAiConversationFromFirebase(conversationId: string): 
     console.warn("Failed to delete conversation from Firebase:", error);
   }
 }
+
+// Aliases for backwards compatibility
+export const saveAiMessageToFirebase = saveAiMessage;
+export const loadAiMessagesFromFirebase = fetchAiMessages;
+export const loadUserAiConversationsFromFirebase = fetchUserAiConversations;
+export const saveLearnedFactToFirebase = saveLearnedFact;
+export const loadLearnedFactsFromFirebase = fetchLearnedFacts;
+export const deleteAiConversationFromFirebase = deleteAiConversation;

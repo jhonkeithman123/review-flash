@@ -60,9 +60,12 @@ function getPublicDecksCollection() {
 
 const DEFAULT_USER_ID = "local-user";
 
-async function canUseFirestore(): Promise<boolean> {
+export async function isFirestoreAvailable(): Promise<boolean> {
   return Boolean(isFirebaseConfigured && db);
 }
+
+// Backwards-compatible alias
+export const canUseFirestore = isFirestoreAvailable;
 
 export function sanitizeForFirestore<T>(obj: T): T {
   if (obj === null || typeof obj !== "object") return obj;
@@ -1128,7 +1131,7 @@ export async function deleteFlashcard(id: string): Promise<void> {
 let statsDebounceTimer: NodeJS.Timeout | null = null;
 let pendingStatsToSync: UserStats | null = null;
 
-export function scheduleStatsSyncToFirestore(updatedStats: UserStats): void {
+export function syncStatsToCloud(updatedStats: UserStats): void {
   pendingStatsToSync = updatedStats;
   if (statsDebounceTimer) {
     clearTimeout(statsDebounceTimer);
@@ -1137,7 +1140,7 @@ export function scheduleStatsSyncToFirestore(updatedStats: UserStats): void {
     statsDebounceTimer = null;
     const statsToSave = pendingStatsToSync;
     if (!statsToSave) return;
-    if (await canUseFirestore()) {
+    if (await isFirestoreAvailable()) {
       try {
         const statsDoc = getUserStatsDoc();
         if (statsDoc) {
@@ -1154,10 +1157,12 @@ export function scheduleStatsSyncToFirestore(updatedStats: UserStats): void {
   }, 1500);
 }
 
+export const scheduleStatsSyncToFirestore = syncStatsToCloud;
+
 const deckDebounceTimers = new Map<string, NodeJS.Timeout>();
 const pendingDecksToSync = new Map<string, Deck>();
 
-export function scheduleDeckSyncToFirestore(deck: Deck): void {
+export function syncDeckToCloud(deck: Deck): void {
   pendingDecksToSync.set(deck.id, deck);
   if (deckDebounceTimers.has(deck.id)) {
     clearTimeout(deckDebounceTimers.get(deck.id)!);
@@ -1169,7 +1174,7 @@ export function scheduleDeckSyncToFirestore(deck: Deck): void {
     if (!deckToSave) return;
     pendingDecksToSync.delete(deck.id);
 
-    if (await canUseFirestore()) {
+    if (await isFirestoreAvailable()) {
       try {
         const colRef = getUserDecksCollection();
         if (colRef) {
@@ -1179,14 +1184,16 @@ export function scheduleDeckSyncToFirestore(deck: Deck): void {
         if (e?.code === "resource-exhausted" || e?.message?.includes("Write stream")) {
           console.warn("Firestore write stream throttled deck update; local deck is preserved.");
         } else {
-          console.warn("Firestore deck background sync error:", e);
+          console.warn("Firestore deck background update failed", e);
         }
       }
     }
-  }, 2000);
+  }, 1500);
 
   deckDebounceTimers.set(deck.id, timer);
 }
+
+export const scheduleDeckSyncToFirestore = syncDeckToCloud;
 
 export async function recordReviewResult(cardId: string, remembered: boolean): Promise<void> {
   const allDecks = getLocalDecks();
