@@ -1,43 +1,24 @@
 {
-  "name": "review-flash",
-  "version": "2.2.0",
+  "name": "review-flash-monorepo",
+  "version": "1.0.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
-    "lint": "eslint",
-    "seed:firebase": "bun scripts/seed-firebase.ts"
+    "dev": "turbo run dev cypress:open --parallel",
+    "build": "turbo run build",
+    "start": "turbo run start",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "storybook": "turbo run storybook",
+    "build-storybook": "turbo run build-storybook",
+    "check:pressbook": "turbo run test:pressbook",
+    "cypress:open": "turbo run cypress:open",
+    "cypress:run": "turbo run cypress:run",
+    "cypress": "turbo run cypress:open",
+    "build:pressbook": "pnpm --filter @dit/pressbook build",
+    "publish:pressbook": "pnpm --filter @dit/pressbook publish --access public"
   },
-  "dependencies": {
-    "@131fgh/ditroy-client": "^0.2.0",
-    "canvas-confetti": "^1.9.4",
-    "clsx": "^2.1.1",
-    "firebase": "^12.18.0",
-    "lucide-react": "^1.35.0",
-    "next": "16.3.3",
-    "react": "19.2.8",
-    "react-dom": "19.2.8",
-    "tailwind-merge": "^3.6.0"
-  },
+  "packageManager": "pnpm@10.5.2",
   "devDependencies": {
-    "@tailwindcss/postcss": "^4",
-    "@types/canvas-confetti": "^1.9.0",
-    "@types/node": "^20",
-    "@types/react": "^19",
-    "@types/react-dom": "^19",
-    "eslint": "^9",
-    "eslint-config-next": "16.3.3",
-    "tailwindcss": "^4",
-    "typescript": "^5"
-  },
-  "packageManager": "bun@1.4.0",
-  "ignoreScripts": [
-    "sharp",
-    "unrs-resolver"
-  ],
-  "trustedDependencies": [
-    "sharp",
-    "unrs-resolver"
-  ]
+    "turbo": "^2.11.2"
+  }
 }

@@ -1,0 +1,73 @@
+{
+  "name": "@dit/pressbook",
+  "version": "0.1.0",
+  "description": "Universal frontend checker combining Cypress and Storybook for automated story crawling, a11y audits, and site journey verification.",
+  "author": "DIT Team",
+  "license": "MIT",
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "pressbook": "./bin/pressbook.js"
+  },
+  "files": [
+    "dist",
+    "bin",
+    "README.md"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    },
+    "./cypress": {
+      "types": "./dist/cypress/index.d.ts",
+      "import": "./dist/cypress/index.mjs",
+      "require": "./dist/cypress/index.js"
+    },
+    "./storybook": {
+      "types": "./dist/storybook/index.d.ts",
+      "import": "./dist/storybook/index.mjs",
+      "require": "./dist/storybook/index.js"
+    },
+    "./config": {
+      "types": "./dist/config/index.d.ts",
+      "import": "./dist/config/index.mjs",
+      "require": "./dist/config/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@clack/prompts": "^1.8.1",
+    "axe-core": "^4.10.2",
+    "commander": "^13.1.0",
+    "cosmiconfig": "^9.0.0",
+    "cypress-axe": "^1.6.0",
+    "picocolors": "^1.1.1",
+    "sirv": "^3.0.1",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.3",
+    "cypress": "^14.1.0",
+    "tsup": "^8.4.0",
+    "typescript": "^5.8.2"
+  },
+  "peerDependencies": {
+    "@storybook/react": ">=8.0.0",
+    "cypress": ">=13.0.0"
+  },
+  "peerDependenciesMeta": {
+    "cypress": {
+      "optional": true
+    },
+    "@storybook/react": {
+      "optional": true
+    }
+  }
+}

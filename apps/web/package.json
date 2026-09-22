@@ -1,0 +1,47 @@
+{
+  "name": "review-flash",
+  "version": "2.2.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint",
+    "storybook": "storybook dev -p 6006",
+    "build-storybook": "storybook build",
+    "test:pressbook": "cypress run",
+    "cypress:open": "cypress open",
+    "seed:firebase": "tsx scripts/seed-firebase.ts",
+     "cypress:run": "cypress run"
+  },
+  "dependencies": {
+    "@131fgh/ditroy-client": "^0.2.0",
+    "canvas-confetti": "^1.9.4",
+    "clsx": "^2.1.1",
+    "firebase": "^12.18.0",
+    "lucide-react": "^1.35.0",
+    "next": "16.3.3",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "tailwind-merge": "^3.6.0"
+  },
+  "devDependencies": {
+    "@dit/pressbook": "workspace:*",
+    "@storybook/react": "^8.6.4",
+    "@storybook/react-vite": "^8.6.4",
+    "@tailwindcss/postcss": "^4",
+    "@types/canvas-confetti": "^1.9.0",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "cypress": "^14.1.0",
+    "eslint": "^9",
+    "eslint-config-next": "16.3.3",
+    "storybook": "^8.6.4",
+    "tailwindcss": "^4",
+    "tsx": "^4.19.3",
+    "typescript": "^5",
+    "vite": "^6.2.0",
+    "vite-tsconfig-paths": "^5.1.4"
+  }
+}

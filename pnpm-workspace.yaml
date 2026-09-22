@@ -1,0 +1,11 @@
+packages:
+  - apps/*
+  - packages/*
+onlyBuiltDependencies:
+  - '@firebase/util'
+  - core-js-pure
+  - cypress
+  - esbuild
+  - protobufjs
+  - sharp
+  - unrs-resolver
