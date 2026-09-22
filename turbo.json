@@ -32,8 +32,8 @@
         "cache": false
     },
     "cypress:open": {
-    "cache": false,
-    "persistent": true
+      "cache": false,
+      "persistent": true
     }
   }
 }
