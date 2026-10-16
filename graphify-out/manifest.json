@@ -646,5 +646,11 @@
     "seen": 1792164547.1369915,
     "ast_hash": "c7901e6b9b8ffb5da64505af4f548eaa",
     "semantic_hash": ""
+  },
+  "GEMINI.md": {
+    "mtime": 1792164626.482293,
+    "seen": 1792164635.879444,
+    "ast_hash": "771faa62feb60b7de901a397aebb29b0",
+    "semantic_hash": ""
   }
 }

@@ -1,17 +1,17 @@
 # Graph Report - review-flash  (2026-10-16)
 
 ## Corpus Check
-- 98 files · ~380,219 words
+- 99 files · ~380,271 words
 - Verdict: corpus is large enough that graph structure adds value.
-- Unclassified: 8 file(s) not represented in the graph (top: (none) 3, .ico 3, .cache 1)
+- Unclassified: 9 file(s) not represented in the graph (top: (none) 4, .ico 3, .cache 1)
 
 ## Summary
-- 748 nodes · 1437 edges · 54 communities (40 shown, 14 thin omitted)
+- 749 nodes · 1437 edges · 55 communities (40 shown, 15 thin omitted)
 - Extraction: 100% EXTRACTED · 0% INFERRED · 0% AMBIGUOUS · INFERRED: 7 edges (avg confidence: 0.88)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `4b8ad9e9`
+- Built from commit: `dc432da9`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -73,10 +73,10 @@
 4. `next` - 26 edges
 5. `fetchDecks()` - 24 edges
 6. `TestContent()` - 22 edges
-7. `canUseFirestore` - 19 edges
-8. `updateDeck()` - 19 edges
+7. `updateDeck()` - 19 edges
+8. `canUseFirestore` - 19 edges
 9. `CreateContent()` - 18 edges
-10. `compilerOptions` - 16 edges
+10. `Flashcard` - 16 edges
 
 ## Surprising Connections (you probably didn't know these)
 - `⚡ Improvements & New Features` --references--> `DeckSelector()`  [INFERRED]
@@ -85,15 +85,15 @@
   apps/web/docs/CHANGELOG.md → apps/web/components/deck-set-selector.tsx
 - `deleteAiConversation()` --calls--> `getCurrentUserId()`  [EXTRACTED]
   apps/web/lib/aiMemoryService.ts → apps/web/lib/flashcardService.ts
-- `CreateContent()` --calls--> `divideCardsIntoSets()`  [EXTRACTED]
-  apps/web/app/create/page.tsx → apps/web/lib/setDivider.ts
-- `DecksPage()` --calls--> `useConfirm()`  [EXTRACTED]
-  apps/web/app/decks/page.tsx → apps/web/components/confirm-prompt.tsx
+- `DeckSelectorProps` --references--> `Deck`  [EXTRACTED]
+  apps/web/components/deck-selector.tsx → apps/web/types/flashcard.ts
+- `FlashcardCardProps` --references--> `Flashcard`  [EXTRACTED]
+  apps/web/components/flashcard-card.tsx → apps/web/types/flashcard.ts
 
 ## Import Cycles
 - None detected.
 
-## Communities (54 total, 14 thin omitted)
+## Communities (55 total, 15 thin omitted)
 
 ### Community 1 - "flashcard.ts"
 Cohesion: 0.05
@@ -256,16 +256,16 @@ Cohesion: 0.67
 Nodes (3): peerDependencies, cypress, @storybook/react
 
 ## Knowledge Gaps
-- **23 isolated node(s):** `clsx`, `react-dom`, `tailwind-merge`, `@dit/pressbook`, `@storybook/react` (+18 more)
-  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 369 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
-- **14 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **23 isolated node(s):** `cypress`, `@storybook/react`, `@types/node`, `typescript`, `axe-core` (+18 more)
+  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 370 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
+- **15 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
 - **Why does `⚡ Improvements & New Features` connect `flashcard.ts` to `Minor Bug Fix & Improvement Update`?**
-  _High betweenness centrality (0.077) - this node is a cross-community bridge._
-- **What connects `clsx`, `react-dom`, `tailwind-merge` to the rest of the system?**
+  _High betweenness centrality (0.076) - this node is a cross-community bridge._
+- **What connects `cypress`, `@storybook/react`, `@types/node` to the rest of the system?**
   _23 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `flashcard.ts` be split into smaller, more focused modules?**
   _Cohesion score 0.05441400304414003 - nodes in this community are weakly interconnected._

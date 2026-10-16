@@ -52,5 +52,6 @@
   "50": "test/layout.tsx",
   "51": "postcss.config.mjs",
   "52": "vercel.json",
-  "53": "CLAUDE.md"
+  "53": "CLAUDE.md",
+  "54": "GEMINI.md"
 }
