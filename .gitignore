@@ -37,3 +37,4 @@ yarn-error.log*
 .vercel
 .turbo/
 graphify-out/
+summary.html

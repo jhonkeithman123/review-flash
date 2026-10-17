@@ -15,7 +15,11 @@
     "cypress:run": "turbo run cypress:run",
     "cypress": "turbo run cypress:open",
     "build:pressbook": "pnpm --filter @dit/pressbook build",
-    "publish:pressbook": "pnpm --filter @dit/pressbook publish --access public"
+    "publish:pressbook": "pnpm --filter @dit/pressbook publish --access public",
+    "test:load": "k6 run loadTester.js",
+    "test:load:live": "k6 run -e TARGET_URL=https://review-flash.vercel.app loadTester.js",
+    "test:load:local": "k6 run -e TARGET_URL=http://localhost:3000 loadTester.js",
+    "seeResult": "npx open-cli summary.html"
   },
   "packageManager": "pnpm@10.5.2",
   "devDependencies": {
