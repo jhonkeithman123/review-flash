@@ -63,14 +63,72 @@ import { generateFlashcardsWithAI, smartAutoDetectWithAI } from "@/lib/ditroy";
 import { ShareDeckModal } from "@/components/share-deck-modal";
 import { HelpGuideModal, SAMPLE_FORMATS } from "@/components/help-guide-modal";
 
-
-
 export interface StagedCard {
   tempId: string;
   question: string;
   answer: string;
   tags: string[];
   difficulty: number; // 1 to 5, default 3
+}
+
+const AI_QUESTION_STOP_WORDS = new Set([
+  "a",
+  "an",
+  "and",
+  "are",
+  "does",
+  "for",
+  "how",
+  "is",
+  "of",
+  "the",
+  "to",
+  "what",
+  "when",
+  "which",
+  "why",
+]);
+const MAX_AI_PREVIEW_CARDS = 45;
+
+function normalizeAiQuestion(question: string): string[] {
+  return question
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .split(/\s+/)
+    .filter((word) => word.length > 2 && !AI_QUESTION_STOP_WORDS.has(word));
+}
+
+function isDuplicateAiQuestion(question: string, existingQuestions: string[]) {
+  const candidateWords = new Set(normalizeAiQuestion(question));
+  if (candidateWords.size === 0) return false;
+
+  return existingQuestions.some((existingQuestion) => {
+    const existingWords = new Set(normalizeAiQuestion(existingQuestion));
+    const sharedWords = [...candidateWords].filter((word) =>
+      existingWords.has(word),
+    ).length;
+    return (
+      candidateWords.size === existingWords.size &&
+      sharedWords === candidateWords.size
+    );
+  });
+}
+
+function filterNewAiCards(
+  cards: StagedCard[],
+  existingCards: StagedCard[],
+): StagedCard[] {
+  const acceptedQuestions = existingCards.map((card) => card.question);
+  const newCards: StagedCard[] = [];
+
+  for (const card of cards) {
+    if (!isDuplicateAiQuestion(card.question, acceptedQuestions)) {
+      newCards.push(card);
+      acceptedQuestions.push(card.question);
+    }
+  }
+
+  return newCards;
 }
 
 // Convert HTML rich text clipboard into markdown with **bold** markers
@@ -80,7 +138,7 @@ function convertHtmlToMarkdownBold(html: string): string {
     const doc = parser.parseFromString(html, "text/html");
 
     const boldElements = doc.querySelectorAll(
-      "strong, b, [style*='font-weight: bold'], [style*='font-weight:bold'], [style*='font-weight: 700'], [style*='font-weight:700'], [style*='font-weight: 800'], [style*='font-weight: 900']"
+      "strong, b, [style*='font-weight: bold'], [style*='font-weight:bold'], [style*='font-weight: 700'], [style*='font-weight:700'], [style*='font-weight: 800'], [style*='font-weight: 900']",
     );
 
     boldElements.forEach((el) => {
@@ -99,20 +157,31 @@ function convertHtmlToMarkdownBold(html: string): string {
 // Universal parser supporting Numbered Reviewers, Multi-line Questions, Bold answers, Q/A, and Delimiters
 export function parseTextToCards(
   rawText: string,
-  mode: "auto" | "numbered" | "bold-answer" | "bold-question" | "delimiter" = "auto",
+  mode:
+    | "auto"
+    | "numbered"
+    | "bold-answer"
+    | "bold-question"
+    | "delimiter" = "auto",
   delimiter: "auto" | "tab" | "dash" | "colon" | "semicolon" = "auto",
   clozeStyle: "blank" | "clean" = "blank",
   stripNumbers: boolean = true,
-  activeTags: string[] = ["General"]
+  activeTags: string[] = ["General"],
 ): StagedCard[] {
   const normalized = rawText.replace(/\r\n/g, "\n").trim();
   if (!normalized) return [];
 
   // Check if text has numbered items (e.g., "1. ", "2) ", "Q1: ", "1 - ", "Item 1. ")
   // Must ensure delimiter is followed by whitespace and NOT immediately followed by a digit (to avoid matching 3.3V, 802.11n, 2.0)
-  const hasNumberedItems = /(?:^|\n)\s*(?:(?:(?:Q\s*|Question\s*|Item\s*|No\.?\s*)?\d+[\.\)\:\-\]]|\bQ\d+[:\.\-])\s+(?!\d))/i.test(normalized);
+  const numberedHeader =
+    /(?:(?:Q\s*|Question\s*|Item\s*|No\.?\s*)?\d+[\.\)\:\-\]]|\bQ\d+[:\.\-])[ \t]*(?!\d)/i;
+  const hasNumberedItems = new RegExp(
+    `(?:^|\\n)[ \\t]*${numberedHeader.source}`,
+    "i",
+  ).test(normalized);
   // Check if text has bold markdown or HTML
-  const hasBoldMarkers = /(\*\*(.+?)\*\*|<b>(.+?)<\/b>|<strong>(.+?)<\/strong>)/.test(normalized);
+  const hasBoldMarkers =
+    /(\*\*(.+?)\*\*|<b>(.+?)<\/b>|<strong>(.+?)<\/strong>)/.test(normalized);
 
   // If Auto mode, select best matching strategy
   let effectiveMode = mode;
@@ -121,7 +190,11 @@ export function parseTextToCards(
       effectiveMode = "numbered";
     } else if (hasBoldMarkers) {
       effectiveMode = "bold-answer";
-    } else if (normalized.includes("\t") || normalized.includes(" - ") || /Q\s*[:.-]/i.test(normalized)) {
+    } else if (
+      normalized.includes("\t") ||
+      normalized.includes(" - ") ||
+      /Q\s*[:.-]/i.test(normalized)
+    ) {
       effectiveMode = "delimiter";
     } else if (normalized.includes("\n\n")) {
       effectiveMode = "numbered"; // Paragraph blocks
@@ -135,24 +208,36 @@ export function parseTextToCards(
   // ----------------------------------------------------
   if (effectiveMode === "numbered") {
     // Split on numbered headers that are followed by whitespace and not a decimal number
-    const itemHeaderRegex = /(?:^|\n)\s*(?=(?:(?:(?:Q\s*|Question\s*|Item\s*|No\.?\s*)?\d+[\.\)\:\-\]]|\bQ\d+[:\.\-])\s+(?!\d)))/i;
-    let rawBlocks = normalized.split(itemHeaderRegex).map((b) => b.trim()).filter(Boolean);
+    const itemHeaderRegex = new RegExp(
+      `(?:^|\\n)[ \\t]*(?=${numberedHeader.source})`,
+      "i",
+    );
+    let rawBlocks = normalized
+      .split(itemHeaderRegex)
+      .map((b) => b.trim())
+      .filter(Boolean);
 
     // Fallback: If no blocks found via header regex but double newlines exist
     if (rawBlocks.length <= 1 && normalized.includes("\n\n")) {
-      rawBlocks = normalized.split(/\n{2,}/).map((b) => b.trim()).filter(Boolean);
+      rawBlocks = normalized
+        .split(/\n{2,}/)
+        .map((b) => b.trim())
+        .filter(Boolean);
     }
 
     const results: StagedCard[] = [];
 
     for (let i = 0; i < rawBlocks.length; i++) {
       const block = rawBlocks[i];
-      const lines = block.split("\n").map((l) => l.trim()).filter(Boolean);
+      const lines = block
+        .split("\n")
+        .map((l) => l.trim())
+        .filter(Boolean);
       if (lines.length === 0) continue;
 
       // Check if block has explicit Answer prefix (e.g. "Ans:", "Answer:", "A:", "Key:")
       const explicitAnsIdx = lines.findIndex((l) =>
-        /^(?:Ans(?:wer)?|A|Key|Correct(?:\s+Answer)?)\s*[:.\-–—]\s*/i.test(l)
+        /^(?:Ans(?:wer)?|A|Key|Correct(?:\s+Answer)?)\s*[:.\-–—]\s*/i.test(l),
       );
 
       let qRaw = "";
@@ -163,27 +248,44 @@ export function parseTextToCards(
         aRaw = lines
           .slice(explicitAnsIdx)
           .join(" ")
-          .replace(/^(?:Ans(?:wer)?|A|Key|Correct(?:\s+Answer)?)\s*[:.\-–—]\s*/i, "")
+          .replace(
+            /^(?:Ans(?:wer)?|A|Key|Correct(?:\s+Answer)?)\s*[:.\-–—]\s*/i,
+            "",
+          )
           .trim();
       } else if (lines.length >= 2) {
         // Find if any line ends with or contains a question mark '?'
-        const qMarkIdx = lines.findIndex((l) => l.endsWith("?") || l.includes("?"));
+        const qMarkIdx = lines.findIndex(
+          (l) => l.endsWith("?") || l.includes("?"),
+        );
         if (qMarkIdx !== -1 && qMarkIdx < lines.length - 1) {
           const qLine = lines[qMarkIdx];
           if (qLine.endsWith("?")) {
-            qRaw = lines.slice(0, qMarkIdx + 1).join(" ").trim();
-            aRaw = lines.slice(qMarkIdx + 1).join(" ").trim();
+            qRaw = lines
+              .slice(0, qMarkIdx + 1)
+              .join(" ")
+              .trim();
+            aRaw = lines
+              .slice(qMarkIdx + 1)
+              .join(" ")
+              .trim();
           } else {
             const splitPos = qLine.indexOf("?");
             const beforeQ = qLine.substring(0, splitPos + 1).trim();
             const afterQ = qLine.substring(splitPos + 1).trim();
             const prevLines = lines.slice(0, qMarkIdx);
             qRaw = [...prevLines, beforeQ].join(" ").trim();
-            aRaw = [afterQ, ...lines.slice(qMarkIdx + 1)].filter(Boolean).join(" ").trim();
+            aRaw = [afterQ, ...lines.slice(qMarkIdx + 1)]
+              .filter(Boolean)
+              .join(" ")
+              .trim();
           }
         } else {
           // In multi-line blocks without '?', the final line is the answer, all preceding lines are the question
-          qRaw = lines.slice(0, lines.length - 1).join(" ").trim();
+          qRaw = lines
+            .slice(0, lines.length - 1)
+            .join(" ")
+            .trim();
           aRaw = lines[lines.length - 1].trim();
         }
       } else if (lines.length === 1) {
@@ -209,7 +311,9 @@ export function parseTextToCards(
       }
 
       // Check if answer is enclosed in bold or starts with bold
-      const boldInAns = aRaw.match(/^(\*\*(.+?)\*\*|<b>(.+?)<\/b>|<strong>(.+?)<\/strong>)/);
+      const boldInAns = aRaw.match(
+        /^(\*\*(.+?)\*\*|<b>(.+?)<\/b>|<strong>(.+?)<\/strong>)/,
+      );
       if (boldInAns) {
         aRaw = boldInAns[2] || boldInAns[3] || boldInAns[4] || aRaw;
       }
@@ -218,7 +322,10 @@ export function parseTextToCards(
       let cleanQuestion = qRaw;
       if (stripNumbers) {
         cleanQuestion = cleanQuestion
-          .replace(/^(?:(?:Q\s*|Question\s*|Item\s*|No\.?\s*)?\d+[\.\)\:\-\]]*|\bQ\d+[:\.\-]*)\s+(?!\d)/i, "")
+          .replace(
+            /^(?:(?:Q\s*|Question\s*|Item\s*|No\.?\s*)?\d+[\.\)\:\-\]]*|\bQ\d+[:\.\-]*)\s+(?!\d)/i,
+            "",
+          )
           .trim();
       }
 
@@ -229,7 +336,11 @@ export function parseTextToCards(
 
       if (cleanQuestion && cleanAnswer) {
         results.push({
-          tempId: "staged-num-" + i + "-" + Math.random().toString(36).substring(2, 5),
+          tempId:
+            "staged-num-" +
+            i +
+            "-" +
+            Math.random().toString(36).substring(2, 5),
           question: cleanQuestion,
           answer: cleanAnswer,
           tags: activeTags,
@@ -245,12 +356,16 @@ export function parseTextToCards(
   // STRATEGY 2: BOLD IS ANSWER (Auto Cloze / Q&A Extraction)
   // ----------------------------------------------------
   if (effectiveMode === "bold-answer") {
-    const lines = normalized.split("\n").map((l) => l.trim()).filter(Boolean);
+    const lines = normalized
+      .split("\n")
+      .map((l) => l.trim())
+      .filter(Boolean);
     const results: StagedCard[] = [];
 
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
-      const boldRegex = /(\*\*(.+?)\*\*|<b>(.+?)<\/b>|<strong>(.+?)<\/strong>)/g;
+      const boldRegex =
+        /(\*\*(.+?)\*\*|<b>(.+?)<\/b>|<strong>(.+?)<\/strong>)/g;
       const boldMatches = [...line.matchAll(boldRegex)];
 
       if (boldMatches.length > 0) {
@@ -285,13 +400,20 @@ export function parseTextToCards(
 
         if (stripNumbers) {
           questionText = questionText
-            .replace(/^(?:(?:Q\s*|Question\s*|Item\s*|No\.?\s*)?\d+[\.\)\:\-\]]*|\bQ\d+[:\.\-]*)\s+(?!\d)/i, "")
+            .replace(
+              /^(?:(?:Q\s*|Question\s*|Item\s*|No\.?\s*)?\d+[\.\)\:\-\]]*|\bQ\d+[:\.\-]*)\s+(?!\d)/i,
+              "",
+            )
             .trim();
         }
 
         if (questionText && answerText) {
           results.push({
-            tempId: "staged-bold-" + i + "-" + Math.random().toString(36).substring(2, 5),
+            tempId:
+              "staged-bold-" +
+              i +
+              "-" +
+              Math.random().toString(36).substring(2, 5),
             question: questionText,
             answer: answerText,
             tags: activeTags,
@@ -308,16 +430,25 @@ export function parseTextToCards(
   // STRATEGY 3: BOLD IS QUESTION / TERM
   // ----------------------------------------------------
   if (effectiveMode === "bold-question") {
-    const lines = normalized.split("\n").map((l) => l.trim()).filter(Boolean);
+    const lines = normalized
+      .split("\n")
+      .map((l) => l.trim())
+      .filter(Boolean);
     const results: StagedCard[] = [];
 
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
-      const boldRegex = /(\*\*(.+?)\*\*|<b>(.+?)<\/b>|<strong>(.+?)<\/strong>)/g;
+      const boldRegex =
+        /(\*\*(.+?)\*\*|<b>(.+?)<\/b>|<strong>(.+?)<\/strong>)/g;
       const boldMatches = [...line.matchAll(boldRegex)];
 
       if (boldMatches.length > 0) {
-        let questionText = (boldMatches[0][2] || boldMatches[0][3] || boldMatches[0][4] || "").trim();
+        let questionText = (
+          boldMatches[0][2] ||
+          boldMatches[0][3] ||
+          boldMatches[0][4] ||
+          ""
+        ).trim();
         let answerText = line
           .replace(boldRegex, "")
           .replace(/^[:\-–—\.\s]+/, "")
@@ -325,13 +456,20 @@ export function parseTextToCards(
 
         if (stripNumbers) {
           questionText = questionText
-            .replace(/^(?:(?:Q\s*|Question\s*|Item\s*|No\.?\s*)?\d+[\.\)\:\-\]]*|\bQ\d+[:\.\-]*)\s+(?!\d)/i, "")
+            .replace(
+              /^(?:(?:Q\s*|Question\s*|Item\s*|No\.?\s*)?\d+[\.\)\:\-\]]*|\bQ\d+[:\.\-]*)\s+(?!\d)/i,
+              "",
+            )
             .trim();
         }
 
         if (questionText && answerText) {
           results.push({
-            tempId: "staged-term-" + i + "-" + Math.random().toString(36).substring(2, 5),
+            tempId:
+              "staged-term-" +
+              i +
+              "-" +
+              Math.random().toString(36).substring(2, 5),
             question: questionText,
             answer: answerText,
             tags: activeTags,
@@ -347,7 +485,10 @@ export function parseTextToCards(
   // ----------------------------------------------------
   // STRATEGY 4: DELIMITER / QA PAIR
   // ----------------------------------------------------
-  const lines = normalized.split("\n").map((l) => l.trim()).filter(Boolean);
+  const lines = normalized
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean);
   const results: StagedCard[] = [];
   let isQAMode = lines.some((l) => /^Q\s*[:.-]/i.test(l));
 
@@ -359,7 +500,14 @@ export function parseTextToCards(
         if (curQ && curA) {
           results.push({
             tempId: "staged-qa-" + results.length,
-            question: stripNumbers ? curQ.replace(/^(?:(?:Q\s*|Question\s*|Item\s*|No\.?\s*)?\d+[\.\)\:\-\]]*|\bQ\d+[:\.\-]*)\s+(?!\d)/i, "").trim() : curQ,
+            question: stripNumbers
+              ? curQ
+                  .replace(
+                    /^(?:(?:Q\s*|Question\s*|Item\s*|No\.?\s*)?\d+[\.\)\:\-\]]*|\bQ\d+[:\.\-]*)\s+(?!\d)/i,
+                    "",
+                  )
+                  .trim()
+              : curQ,
             answer: curA,
             tags: activeTags,
             difficulty: 3,
@@ -377,7 +525,14 @@ export function parseTextToCards(
     if (curQ && curA) {
       results.push({
         tempId: "staged-qa-" + results.length,
-        question: stripNumbers ? curQ.replace(/^(?:(?:Q\s*|Question\s*|Item\s*|No\.?\s*)?\d+[\.\)\:\-\]]*|\bQ\d+[:\.\-]*)\s+(?!\d)/i, "").trim() : curQ,
+        question: stripNumbers
+          ? curQ
+              .replace(
+                /^(?:(?:Q\s*|Question\s*|Item\s*|No\.?\s*)?\d+[\.\)\:\-\]]*|\bQ\d+[:\.\-]*)\s+(?!\d)/i,
+                "",
+              )
+              .trim()
+          : curQ,
         answer: curA,
         tags: activeTags,
         difficulty: 3,
@@ -389,15 +544,27 @@ export function parseTextToCards(
       let q = "";
       let a = "";
 
-      if (delimiter === "tab" || (delimiter === "auto" && line.includes("\t"))) {
+      if (
+        delimiter === "tab" ||
+        (delimiter === "auto" && line.includes("\t"))
+      ) {
         const parts = line.split("\t");
         q = parts[0]?.trim();
         a = parts.slice(1).join("\t").trim();
-      } else if (delimiter === "dash" || (delimiter === "auto" && (line.includes(" - ") || line.includes(" -- ") || line.includes(" — ")))) {
+      } else if (
+        delimiter === "dash" ||
+        (delimiter === "auto" &&
+          (line.includes(" - ") ||
+            line.includes(" -- ") ||
+            line.includes(" — ")))
+      ) {
         const parts = line.split(/\s+[-–—]{1,2}\s+/);
         q = parts[0]?.trim();
         a = parts.slice(1).join(" - ").trim();
-      } else if (delimiter === "semicolon" || (delimiter === "auto" && line.includes(";"))) {
+      } else if (
+        delimiter === "semicolon" ||
+        (delimiter === "auto" && line.includes(";"))
+      ) {
         const parts = line.split(";");
         q = parts[0]?.trim();
         a = parts.slice(1).join(";").trim();
@@ -414,12 +581,21 @@ export function parseTextToCards(
       }
 
       if (stripNumbers && q) {
-        q = q.replace(/^(?:(?:Q\s*|Question\s*|Item\s*|No\.?\s*)?\d+[\.\)\:\-\]]*|\bQ\d+[:\.\-]*)\s+(?!\d)/i, "").trim();
+        q = q
+          .replace(
+            /^(?:(?:Q\s*|Question\s*|Item\s*|No\.?\s*)?\d+[\.\)\:\-\]]*|\bQ\d+[:\.\-]*)\s+(?!\d)/i,
+            "",
+          )
+          .trim();
       }
 
       if (q && a) {
         results.push({
-          tempId: "staged-del-" + i + "-" + Math.random().toString(36).substring(2, 5),
+          tempId:
+            "staged-del-" +
+            i +
+            "-" +
+            Math.random().toString(36).substring(2, 5),
           question: q,
           answer: a,
           tags: activeTags,
@@ -439,10 +615,10 @@ function CreateContent() {
 
   const [existingDecks, setExistingDecks] = useState<Deck[]>([]);
   const [targetDeckMode, setTargetDeckMode] = useState<"new" | "existing">(
-    existingDeckId ? "existing" : "new"
+    existingDeckId ? "existing" : "new",
   );
   const [selectedDeckId, setSelectedDeckId] = useState<string>(
-    existingDeckId || ""
+    existingDeckId || "",
   );
 
   // Deck metadata
@@ -451,20 +627,24 @@ function CreateContent() {
   const [setTags, setSetTags] = useState(""); // Persistent set tags!
   const [shuffleQuestions, setShuffleQuestions] = useState(false);
   const [defaultRole, setDefaultRole] = useState<DeckPermissionRole>("viewer");
-  const [authorizedUsers, setAuthorizedUsers] = useState<AuthorizedCollaborator[]>([]);
+  const [authorizedUsers, setAuthorizedUsers] = useState<
+    AuthorizedCollaborator[]
+  >([]);
   const [newCollabInput, setNewCollabInput] = useState("");
-  const [newCollabRole, setNewCollabRole] = useState<DeckPermissionRole>("editor");
+  const [newCollabRole, setNewCollabRole] =
+    useState<DeckPermissionRole>("editor");
   const [showPermissionsPanel, setShowPermissionsPanel] = useState(false);
   const [activeDeckRole, setActiveDeckRole] = useState<UserDeckRole>("owner");
   const [activeDeckAuthorName, setActiveDeckAuthorName] = useState<string>("");
 
   // Deck Set Division Configuration (e.g. Set A, Set B, 30 items per set, etc.)
-  const [setDivisionConfig, setSetDivisionConfig] = useState<DeckSetDivisionConfig>({
-    enabled: false,
-    mode: "count",
-    value: 2,
-    namingStyle: "letters",
-  });
+  const [setDivisionConfig, setSetDivisionConfig] =
+    useState<DeckSetDivisionConfig>({
+      enabled: false,
+      mode: "count",
+      value: 2,
+      namingStyle: "letters",
+    });
 
   // Active Input Mode: 'bulk', 'ai', or 'rapid'
   const [inputTab, setInputTab] = useState<"bulk" | "ai" | "rapid">("bulk");
@@ -478,8 +658,12 @@ function CreateContent() {
   const [isAiParsingBulk, setIsAiParsingBulk] = useState(false);
 
   // Dual Smart Detection Engine State: "native" (hardcoded/regex) vs "ai" (DITroy AI)
-  const [smartDetectionEngine, setSmartDetectionEngine] = useState<"native" | "ai">("native");
-  const [aiDetectSubMode, setAiDetectSubMode] = useState<"detect-qa" | "from-context">("from-context");
+  const [smartDetectionEngine, setSmartDetectionEngine] = useState<
+    "native" | "ai"
+  >("native");
+  const [aiDetectSubMode, setAiDetectSubMode] = useState<
+    "detect-qa" | "from-context"
+  >("from-context");
   const [aiDetectCardCount, setAiDetectCardCount] = useState<number>(5);
   const [aiDetectedCards, setAiDetectedCards] = useState<StagedCard[]>([]);
   const [isAiDetecting, setIsAiDetecting] = useState(false);
@@ -491,13 +675,81 @@ function CreateContent() {
 
   // Smart Parser State (Native)
   const [bulkText, setBulkText] = useState("");
-  const [parserMode, setParserMode] = useState<"auto" | "numbered" | "bold-answer" | "bold-question" | "delimiter">("auto");
-  const [bulkDelimiter, setBulkDelimiter] = useState<"auto" | "tab" | "dash" | "colon" | "semicolon">("auto");
+  const [parserMode, setParserMode] = useState<
+    "auto" | "numbered" | "bold-answer" | "bold-question" | "delimiter"
+  >("auto");
+  const [bulkDelimiter, setBulkDelimiter] = useState<
+    "auto" | "tab" | "dash" | "colon" | "semicolon"
+  >("auto");
   const [clozeStyle, setClozeStyle] = useState<"blank" | "clean">("blank");
   const [stripNumbers, setStripNumbers] = useState(true);
 
   // Staged Cards (Queue)
   const [stagedCards, setStagedCards] = useState<StagedCard[]>([]);
+  const [isStagedCardsCacheReady, setIsStagedCardsCacheReady] = useState(false);
+  const stagedCardsCacheDisabledRef = useRef(false);
+
+  const stagedCardsCacheKey = existingDeckId
+    ? `reviewflash:create-staged-cards:${existingDeckId}`
+    : "reviewflash:create-staged-cards:new";
+
+  useEffect(() => {
+    if (existingDeckId) {
+      setIsStagedCardsCacheReady(true);
+      return;
+    }
+
+    try {
+      const cached = window.localStorage.getItem(stagedCardsCacheKey);
+      if (cached) {
+        const parsed: unknown = JSON.parse(cached);
+        if (Array.isArray(parsed)) {
+          const validCards = parsed.filter(
+            (card): card is StagedCard =>
+              Boolean(card) &&
+              typeof card === "object" &&
+              typeof card.tempId === "string" &&
+              typeof card.question === "string" &&
+              typeof card.answer === "string" &&
+              Array.isArray(card.tags) &&
+              typeof card.difficulty === "number",
+          );
+          if (validCards.length > 0) setStagedCards(validCards);
+        }
+      }
+    } catch {
+      try {
+        window.localStorage.removeItem(stagedCardsCacheKey);
+      } catch {}
+    } finally {
+      setIsStagedCardsCacheReady(true);
+    }
+  }, [existingDeckId, stagedCardsCacheKey]);
+
+  useEffect(() => {
+    if (
+      !isStagedCardsCacheReady ||
+      existingDeckId ||
+      stagedCardsCacheDisabledRef.current
+    )
+      return;
+
+    try {
+      if (stagedCards.length === 0) {
+        window.localStorage.removeItem(stagedCardsCacheKey);
+      } else {
+        window.localStorage.setItem(
+          stagedCardsCacheKey,
+          JSON.stringify(stagedCards),
+        );
+      }
+    } catch {}
+  }, [
+    existingDeckId,
+    isStagedCardsCacheReady,
+    stagedCards,
+    stagedCardsCacheKey,
+  ]);
 
   // Editing state for staged card
   const [editingCardId, setEditingCardId] = useState<string | null>(null);
@@ -513,6 +765,15 @@ function CreateContent() {
     type: "success" | "error" | "info";
     text: string;
   } | null>(null);
+  const [isStatusClosing, setIsStatusClosing] = useState(false);
+
+  const dismissStatusMessage = () => {
+    setIsStatusClosing(true);
+    window.setTimeout(() => {
+      setStatusMessage(null);
+      setIsStatusClosing(false);
+    }, 360);
+  };
 
   // Template loader from URL query params (e.g. ?template=numbered)
   const templateParam = searchParams.get("template");
@@ -559,27 +820,38 @@ function CreateContent() {
       window.dispatchEvent(
         new CustomEvent("practical-tut-action", {
           detail: { action: "insert-sample-template" },
-        })
+        }),
       );
     }
   };
-
 
   // Load existing decks if user wants to add or edit an existing deck
   useEffect(() => {
     async function load() {
       const decks = await fetchDecks();
       setExistingDecks(decks);
-      const targetId = existingDeckId || (targetDeckMode === "existing" && decks.length > 0 ? decks[0].id : "");
+      const targetId =
+        existingDeckId ||
+        (targetDeckMode === "existing" && decks.length > 0 ? decks[0].id : "");
       if (targetId) {
         let target = decks.find((d) => d.id === targetId);
         if (!target) {
           target = (await fetchDeckById(targetId)) || undefined;
         }
         if (target) {
-          const role = getUserDeckRole(target, getCurrentUserId(), getCurrentUserEmail(), getCurrentUserName());
+          const role = getUserDeckRole(
+            target,
+            getCurrentUserId(),
+            getCurrentUserEmail(),
+            getCurrentUserName(),
+          );
           setActiveDeckRole(role);
-          setActiveDeckAuthorName(target.authorName || target.authorEmail || target.authorId || "Original Creator");
+          setActiveDeckAuthorName(
+            target.authorName ||
+              target.authorEmail ||
+              target.authorId ||
+              "Original Creator",
+          );
           setSelectedDeckId(target.id);
           setDeckTitle(target.title);
           setSetTags(target.tags.join(", "));
@@ -605,7 +877,7 @@ function CreateContent() {
               answer: c.answer,
               tags: c.tags,
               difficulty: c.difficulty || 3,
-            }))
+            })),
           );
 
           if (typeof window !== "undefined") {
@@ -635,9 +907,19 @@ function CreateContent() {
       target = (await fetchDeckById(id)) || undefined;
     }
     if (target) {
-      const role = getUserDeckRole(target, getCurrentUserId(), getCurrentUserEmail(), getCurrentUserName());
+      const role = getUserDeckRole(
+        target,
+        getCurrentUserId(),
+        getCurrentUserEmail(),
+        getCurrentUserName(),
+      );
       setActiveDeckRole(role);
-      setActiveDeckAuthorName(target.authorName || target.authorEmail || target.authorId || "Original Creator");
+      setActiveDeckAuthorName(
+        target.authorName ||
+          target.authorEmail ||
+          target.authorId ||
+          "Original Creator",
+      );
       setDeckTitle(target.title);
       setSetTags(target.tags.join(", "));
       setDeckDescription(target.description || "");
@@ -661,7 +943,7 @@ function CreateContent() {
           answer: c.answer,
           tags: c.tags,
           difficulty: c.difficulty || 3,
-        }))
+        })),
       );
 
       if (typeof window !== "undefined") {
@@ -688,22 +970,38 @@ function CreateContent() {
     e.preventDefault();
     const id = newCollabInput.trim();
     if (!id) return;
-    if (authorizedUsers.some((u) => u.identifier.toLowerCase() === id.toLowerCase())) {
+    if (
+      authorizedUsers.some(
+        (u) => u.identifier.toLowerCase() === id.toLowerCase(),
+      )
+    ) {
       return;
     }
-    setAuthorizedUsers((prev) => [...prev, { identifier: id, role: newCollabRole }]);
+    setAuthorizedUsers((prev) => [
+      ...prev,
+      { identifier: id, role: newCollabRole },
+    ]);
     setNewCollabInput("");
   };
 
   const handleRemoveCollaborator = (identifier: string) => {
-    setAuthorizedUsers((prev) => prev.filter((u) => u.identifier !== identifier));
+    setAuthorizedUsers((prev) =>
+      prev.filter((u) => u.identifier !== identifier),
+    );
   };
 
   // Rich text clipboard paste handler
-  const handleSmartTextPaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+  const handleSmartTextPaste = (
+    e: React.ClipboardEvent<HTMLTextAreaElement>,
+  ) => {
     const htmlData = e.clipboardData.getData("text/html");
 
-    if (htmlData && (htmlData.includes("<strong") || htmlData.includes("<b") || htmlData.includes("font-weight"))) {
+    if (
+      htmlData &&
+      (htmlData.includes("<strong") ||
+        htmlData.includes("<b") ||
+        htmlData.includes("font-weight"))
+    ) {
       e.preventDefault();
       const converted = convertHtmlToMarkdownBold(htmlData);
 
@@ -711,7 +1009,8 @@ function CreateContent() {
       const start = textarea.selectionStart;
       const end = textarea.selectionEnd;
       const current = bulkText;
-      const updated = current.substring(0, start) + converted + current.substring(end);
+      const updated =
+        current.substring(0, start) + converted + current.substring(end);
 
       setBulkText(updated);
       setStatusMessage({
@@ -729,7 +1028,7 @@ function CreateContent() {
       bulkDelimiter,
       clozeStyle,
       stripNumbers,
-      getParsedSetTags()
+      getParsedSetTags(),
     );
   }, [bulkText, parserMode, bulkDelimiter, clozeStyle, stripNumbers, setTags]);
 
@@ -753,7 +1052,11 @@ function CreateContent() {
     }
 
     const newCard: StagedCard = {
-      tempId: "staged-" + Date.now() + "-" + Math.random().toString(36).substring(2, 6),
+      tempId:
+        "staged-" +
+        Date.now() +
+        "-" +
+        Math.random().toString(36).substring(2, 6),
       question: q,
       answer: a,
       tags: getParsedSetTags(),
@@ -772,7 +1075,7 @@ function CreateContent() {
       window.dispatchEvent(
         new CustomEvent("practical-tut-action", {
           detail: { action: "stage-single-card" },
-        })
+        }),
       );
     }
 
@@ -791,7 +1094,10 @@ function CreateContent() {
   // Apply parsed bulk cards to staging
   const handleApplyBulkCards = () => {
     if (!bulkText.trim()) {
-      setStatusMessage({ type: "error", text: "Please paste text into the box first." });
+      setStatusMessage({
+        type: "error",
+        text: "Please paste text into the box first.",
+      });
       return;
     }
 
@@ -813,13 +1119,18 @@ function CreateContent() {
       window.dispatchEvent(
         new CustomEvent("practical-tut-action", {
           detail: { action: "stage-bulk-cards" },
-        })
+        }),
       );
     }
   };
 
   // Generate flashcards from topic or notes using DITroy AI
-  const handleGenerateWithAI = async () => {
+  const handleGenerateWithAI = async (extendExisting = false) => {
+    const isRegenerating = !extendExisting && aiGeneratedCards.length > 0;
+    const requestedCardCount = extendExisting
+      ? Math.min(aiCardCount, MAX_AI_PREVIEW_CARDS - aiGeneratedCards.length)
+      : aiCardCount;
+
     let content = (aiNotes || aiTopic).trim();
     if (!content) {
       content = "Computer Networks: TCP/IP vs OSI Model";
@@ -829,14 +1140,19 @@ function CreateContent() {
     setAiLoading(true);
     setStatusMessage({
       type: "info",
-      text: "✨ DITroy AI is analyzing content and generating flashcards...",
+      text: isRegenerating
+        ? "🔄 DITroy AI is generating a fresh set of 15 flashcards..."
+        : "✨ DITroy AI is analyzing content and generating flashcards...",
     });
 
     try {
       const result = await generateFlashcardsWithAI(content, {
         topic: aiTopic.trim() || undefined,
-        cardCount: aiCardCount,
+        cardCount: requestedCardCount,
         tags: getParsedSetTags(),
+        excludeQuestions: extendExisting
+          ? aiGeneratedCards.map((card) => card.question)
+          : [],
       });
 
       if (result.cards.length > 0) {
@@ -847,69 +1163,34 @@ function CreateContent() {
           tags: c.tags && c.tags.length > 0 ? c.tags : getParsedSetTags(),
           difficulty: c.difficulty || 3,
         }));
-        setAiGeneratedCards(staged);
+        const newCards = extendExisting
+          ? filterNewAiCards(staged, aiGeneratedCards)
+          : staged;
+        if (isRegenerating) setAiGeneratedCards(staged);
+        else if (extendExisting)
+          setAiGeneratedCards((prev) => [...prev, ...newCards]);
+        else setAiGeneratedCards(staged);
         setStatusMessage({
-          type: "success",
-          text: `✨ DITroy AI successfully generated ${staged.length} high-yield flashcards! Review them below and click "Add All to Deck Queue".`,
+          type: newCards.length > 0 ? "success" : "error",
+          text:
+            newCards.length === 0
+              ? "DITroy AI returned only questions already in the preview. Try Continue again for a different batch."
+              : isRegenerating
+                ? `🔄 DITroy AI regenerated ${newCards.length} flashcards! Review the fresh set below.`
+                : `✨ DITroy AI generated ${newCards.length} new high-yield flashcards! Review them below and click "Add All to Deck Queue".`,
         });
       } else {
-        const fallbackCards: StagedCard[] = [
-          {
-            tempId: "staged-ai-sample-1",
-            question: "What is the primary role of the OSI Transport Layer?",
-            answer: "End-to-end data delivery, flow control, and multiplexing (e.g. TCP & UDP).",
-            tags: ["Networking", "OSI"],
-            difficulty: 3,
-          },
-          {
-            tempId: "staged-ai-sample-2",
-            question: "What is the key difference between TCP and UDP?",
-            answer: "TCP is connection-oriented and reliable, while UDP is connectionless and high-speed.",
-            tags: ["Networking", "Protocols"],
-            difficulty: 3,
-          },
-          {
-            tempId: "staged-ai-sample-3",
-            question: "What standard port is used for HTTPS traffic?",
-            answer: "Port 443 with TLS/SSL encryption.",
-            tags: ["Security", "Web"],
-            difficulty: 2,
-          },
-        ];
-        setAiGeneratedCards(fallbackCards);
         setStatusMessage({
-          type: "success",
-          text: `✨ DITroy AI generated 3 high-yield flashcards! Review them below and click "Add All to Deck Queue".`,
+          type: "error",
+          text:
+            result.error ||
+            "DITroy AI returned no relevant flashcards for this topic.",
         });
       }
     } catch {
-      const fallbackCards: StagedCard[] = [
-        {
-          tempId: "staged-ai-sample-1",
-          question: "What is the primary role of the OSI Transport Layer?",
-          answer: "End-to-end data delivery, flow control, and multiplexing (e.g. TCP & UDP).",
-          tags: ["Networking", "OSI"],
-          difficulty: 3,
-        },
-        {
-          tempId: "staged-ai-sample-2",
-          question: "What is the key difference between TCP and UDP?",
-          answer: "TCP is connection-oriented and reliable, while UDP is connectionless and high-speed.",
-          tags: ["Networking", "Protocols"],
-          difficulty: 3,
-        },
-        {
-          tempId: "staged-ai-sample-3",
-          question: "What standard port is used for HTTPS traffic?",
-          answer: "Port 443 with TLS/SSL encryption.",
-          tags: ["Security", "Web"],
-          difficulty: 2,
-        },
-      ];
-      setAiGeneratedCards(fallbackCards);
       setStatusMessage({
-        type: "success",
-        text: `✨ DITroy AI generated 3 high-yield flashcards! Review them below and click "Add All to Deck Queue".`,
+        type: "error",
+        text: "DITroy AI could not generate cards for this topic. Please try again.",
       });
     } finally {
       setAiLoading(false);
@@ -917,10 +1198,22 @@ function CreateContent() {
         window.dispatchEvent(
           new CustomEvent("practical-tut-action", {
             detail: { action: "generate-ai-cards" },
-          })
+          }),
         );
       }
     }
+  };
+
+  const handleContinueAiGeneration = async () => {
+    if (aiGeneratedCards.length === 0 || aiLoading) return;
+    if (aiGeneratedCards.length >= MAX_AI_PREVIEW_CARDS) {
+      setStatusMessage({
+        type: "info",
+        text: `The AI preview is limited to ${MAX_AI_PREVIEW_CARDS} cards. Add these cards to the deck queue before generating another set.`,
+      });
+      return;
+    }
+    await handleGenerateWithAI(true);
   };
 
   const handleApplyAiGeneratedCards = () => {
@@ -935,7 +1228,7 @@ function CreateContent() {
       window.dispatchEvent(
         new CustomEvent("practical-tut-action", {
           detail: { action: "add-ai-cards" },
-        })
+        }),
       );
     }
   };
@@ -984,7 +1277,8 @@ function CreateContent() {
     } catch (err: any) {
       setStatusMessage({
         type: "error",
-        text: err?.message || "DITroy AI parser failed. Check backend connection.",
+        text:
+          err?.message || "DITroy AI parser failed. Check backend connection.",
       });
     } finally {
       setIsAiParsingBulk(false);
@@ -1015,6 +1309,7 @@ function CreateContent() {
         topic: deckTitle.trim() || undefined,
         cardCount: aiDetectCardCount,
         tags: getParsedSetTags(),
+        excludeQuestions: aiDetectedCards.map((card) => card.question),
       });
 
       if (result.cards.length > 0) {
@@ -1025,17 +1320,22 @@ function CreateContent() {
           tags: c.tags && c.tags.length > 0 ? c.tags : getParsedSetTags(),
           difficulty: c.difficulty || 3,
         }));
-        setAiDetectedCards(staged);
+        const newCards = filterNewAiCards(staged, aiDetectedCards);
+        setAiDetectedCards((prev) => [...prev, ...newCards]);
         setStatusMessage({
           type: "success",
           text: `🎉 DITroy AI ${
-            aiDetectSubMode === "detect-qa" ? "detected and extracted" : "generated"
-          } ${staged.length} flashcards! Review them below and click "Stage All Cards".`,
+            aiDetectSubMode === "detect-qa"
+              ? "detected and extracted"
+              : "generated"
+          } ${newCards.length} new flashcards! Review them below and click "Stage All Cards".`,
         });
       } else {
         setStatusMessage({
           type: "error",
-          text: result.error || "AI could not detect flashcards. Check connection or try another format.",
+          text:
+            result.error ||
+            "AI could not detect flashcards. Check connection or try another format.",
         });
       }
     } catch (err: any) {
@@ -1061,7 +1361,7 @@ function CreateContent() {
 
   const handleAiDetectedDifficultyChange = (tempId: string, level: number) => {
     setAiDetectedCards((prev) =>
-      prev.map((c) => (c.tempId === tempId ? { ...c, difficulty: level } : c))
+      prev.map((c) => (c.tempId === tempId ? { ...c, difficulty: level } : c)),
     );
   };
 
@@ -1069,14 +1369,13 @@ function CreateContent() {
     setAiDetectedCards((prev) => prev.filter((c) => c.tempId !== tempId));
   };
 
-
   // Batch difficulty settings
   const handleSetAllDifficulty = (level: number) => {
     setStagedCards((prev) =>
       prev.map((c) => ({
         ...c,
         difficulty: level,
-      }))
+      })),
     );
     setStatusMessage({
       type: "info",
@@ -1086,7 +1385,7 @@ function CreateContent() {
 
   const handleCardDifficultyChange = (tempId: string, level: number) => {
     setStagedCards((prev) =>
-      prev.map((c) => (c.tempId === tempId ? { ...c, difficulty: level } : c))
+      prev.map((c) => (c.tempId === tempId ? { ...c, difficulty: level } : c)),
     );
   };
 
@@ -1105,14 +1404,17 @@ function CreateContent() {
       prev.map((c) =>
         c.tempId === tempId
           ? { ...c, question: editQuestion.trim(), answer: editAnswer.trim() }
-          : c
-      )
+          : c,
+      ),
     );
     setEditingCardId(null);
   };
 
   // Save Deck (Reliable handler for new and existing edited decks)
-  const handleSaveDeck = async (autoReview: boolean = false, autoShare: boolean = false) => {
+  const handleSaveDeck = async (
+    autoReview: boolean = false,
+    autoShare: boolean = false,
+  ) => {
     if (stagedCards.length === 0) {
       setStatusMessage({
         type: "error",
@@ -1168,16 +1470,19 @@ function CreateContent() {
 
         if (role === "viewer") {
           console.warn(
-            `🔒 [handleSaveDeck: FORK AS PERSONAL COPY] User "${currentUid}" is a VIEWER on "${target?.title}". Overwrite of original database deck is blocked. Creating a brand new personal copy...`
+            `🔒 [handleSaveDeck: FORK AS PERSONAL COPY] User "${currentUid}" is a VIEWER on "${target?.title}". Overwrite of original database deck is blocked. Creating a brand new personal copy...`,
           );
 
           // Strictly fork as a personal copy without overwriting the original database deck
           finalizedDeck = await createDeck({
             title: deckTitle.trim() || target?.title || "Untitled Study Set",
             description: deckDescription.trim() || target?.description || "",
-            tags: parsedTags.length > 0 ? parsedTags : (target?.tags || ["General"]),
+            tags:
+              parsedTags.length > 0 ? parsedTags : target?.tags || ["General"],
             shuffleQuestions,
-            setDivision: setDivisionConfig.enabled ? setDivisionConfig : undefined,
+            setDivision: setDivisionConfig.enabled
+              ? setDivisionConfig
+              : undefined,
             accessControl: {
               defaultRole: "viewer",
               visibility: "unlisted",
@@ -1191,7 +1496,10 @@ function CreateContent() {
             })),
           });
 
-          console.log("✅ [handleSaveDeck: Fork Success] Created new personal copy with ID:", finalizedDeck.id);
+          console.log(
+            "✅ [handleSaveDeck: Fork Success] Created new personal copy with ID:",
+            finalizedDeck.id,
+          );
 
           setSavedDeck(finalizedDeck);
           setStatusMessage({
@@ -1200,18 +1508,30 @@ function CreateContent() {
           });
         } else {
           console.log(
-            `✏️ [handleSaveDeck: UPDATE & SYNC] User "${currentUid}" has "${role.toUpperCase()}" role. Updating original deck ID "${target?.id || targetId}"...`
+            `✏️ [handleSaveDeck: UPDATE & SYNC] User "${currentUid}" has "${role.toUpperCase()}" role. Updating original deck ID "${target?.id || targetId}"...`,
           );
 
           // Owner or authorized editor updating the deck
           const updatedFlashcards: Flashcard[] = stagedCards.map((sc, i) => {
             const existingCard = target?.cards.find((c) => c.id === sc.tempId);
             return {
-              id: existingCard?.id || ("card-" + Date.now() + "-" + i + "-" + Math.random().toString(36).substring(2, 5)),
+              id:
+                existingCard?.id ||
+                "card-" +
+                  Date.now() +
+                  "-" +
+                  i +
+                  "-" +
+                  Math.random().toString(36).substring(2, 5),
               deckId: target?.id || targetId,
               question: sc.question.trim(),
               answer: sc.answer.trim(),
-              tags: sc.tags.length > 0 ? sc.tags : (parsedTags.length > 0 ? parsedTags : ["General"]),
+              tags:
+                sc.tags.length > 0
+                  ? sc.tags
+                  : parsedTags.length > 0
+                    ? parsedTags
+                    : ["General"],
               difficulty: sc.difficulty,
               createdAt: existingCard?.createdAt || Date.now(),
               lastReviewed: existingCard?.lastReviewed,
@@ -1224,7 +1544,8 @@ function CreateContent() {
             id: target?.id || targetId,
             title: deckTitle.trim() || target?.title || "Untitled Study Set",
             description: deckDescription.trim() || target?.description || "",
-            tags: parsedTags.length > 0 ? parsedTags : (target?.tags || ["General"]),
+            tags:
+              parsedTags.length > 0 ? parsedTags : target?.tags || ["General"],
             cards: updatedFlashcards,
             createdAt: target?.createdAt || Date.now(),
             updatedAt: Date.now(),
@@ -1234,7 +1555,9 @@ function CreateContent() {
             isPublic: target?.isPublic,
             shareCode: target?.shareCode,
             shuffleQuestions,
-            setDivision: setDivisionConfig.enabled ? setDivisionConfig : undefined,
+            setDivision: setDivisionConfig.enabled
+              ? setDivisionConfig
+              : undefined,
             accessControl: {
               defaultRole,
               visibility: "unlisted",
@@ -1243,7 +1566,10 @@ function CreateContent() {
           };
 
           finalizedDeck = await updateDeck(deckToUpdate);
-          console.log("✅ [handleSaveDeck: Update Success] Deck updated and synchronized in Firestore:", finalizedDeck);
+          console.log(
+            "✅ [handleSaveDeck: Update Success] Deck updated and synchronized in Firestore:",
+            finalizedDeck,
+          );
 
           setSavedDeck(finalizedDeck);
           setStatusMessage({
@@ -1252,14 +1578,18 @@ function CreateContent() {
           });
         }
       } else {
-        console.log("✨ [handleSaveDeck: CREATE NEW DECK] Creating brand new study deck...");
+        console.log(
+          "✨ [handleSaveDeck: CREATE NEW DECK] Creating brand new study deck...",
+        );
 
         finalizedDeck = await createDeck({
           title: deckTitle.trim() || "Untitled Study Set",
           description: deckDescription.trim(),
           tags: parsedTags.length > 0 ? parsedTags : ["General"],
           shuffleQuestions,
-          setDivision: setDivisionConfig.enabled ? setDivisionConfig : undefined,
+          setDivision: setDivisionConfig.enabled
+            ? setDivisionConfig
+            : undefined,
           accessControl: {
             defaultRole,
             visibility: "unlisted",
@@ -1273,7 +1603,10 @@ function CreateContent() {
           })),
         });
 
-        console.log("✅ [handleSaveDeck: Create Success] Created new deck with ID:", finalizedDeck.id);
+        console.log(
+          "✅ [handleSaveDeck: Create Success] Created new deck with ID:",
+          finalizedDeck.id,
+        );
 
         setSavedDeck(finalizedDeck);
         setStatusMessage({
@@ -1282,6 +1615,11 @@ function CreateContent() {
         });
       }
 
+      stagedCardsCacheDisabledRef.current = true;
+      try {
+        window.localStorage.removeItem(stagedCardsCacheKey);
+      } catch {}
+
       if (autoShare) {
         setIsShareModalOpen(true);
       } else if (autoReview) {
@@ -1289,7 +1627,10 @@ function CreateContent() {
       }
     } catch (err: unknown) {
       console.error("❌ [handleSaveDeck Error]:", err);
-      const errMsg = err instanceof Error ? err.message : "Failed to save study deck. Please try again.";
+      const errMsg =
+        err instanceof Error
+          ? err.message
+          : "Failed to save study deck. Please try again.";
       setStatusMessage({
         type: "error",
         text: errMsg,
@@ -1301,11 +1642,26 @@ function CreateContent() {
   };
 
   const difficultyLabels: Record<number, { label: string; color: string }> = {
-    1: { label: "1 Easy", color: "bg-emerald-500/20 text-emerald-300 border-emerald-500/40" },
-    2: { label: "2 Light", color: "bg-teal-500/20 text-teal-300 border-teal-500/40" },
-    3: { label: "3 Medium", color: "bg-cyan-500/20 text-cyan-300 border-cyan-500/40" },
-    4: { label: "4 Hard", color: "bg-amber-500/20 text-amber-300 border-amber-500/40" },
-    5: { label: "5 Mastery", color: "bg-rose-500/20 text-rose-300 border-rose-500/40" },
+    1: {
+      label: "1 Easy",
+      color: "bg-emerald-500/20 text-emerald-300 border-emerald-500/40",
+    },
+    2: {
+      label: "2 Light",
+      color: "bg-teal-500/20 text-teal-300 border-teal-500/40",
+    },
+    3: {
+      label: "3 Medium",
+      color: "bg-cyan-500/20 text-cyan-300 border-cyan-500/40",
+    },
+    4: {
+      label: "4 Hard",
+      color: "bg-amber-500/20 text-amber-300 border-amber-500/40",
+    },
+    5: {
+      label: "5 Mastery",
+      color: "bg-rose-500/20 text-rose-300 border-rose-500/40",
+    },
   };
 
   return (
@@ -1318,7 +1674,9 @@ function CreateContent() {
             Fast Creation &amp; Deck Studio
           </div>
           <h1 className="mt-1 text-3xl font-bold text-white sm:text-4xl">
-            {targetDeckMode === "existing" ? "Edit & Customize Deck" : "Create & Organize Decks"}
+            {targetDeckMode === "existing"
+              ? "Edit & Customize Deck"
+              : "Create & Organize Decks"}
           </h1>
           <p className="mt-1 text-sm text-slate-400">
             {targetDeckMode === "existing"
@@ -1341,19 +1699,24 @@ function CreateContent() {
       {/* Status banner */}
       {statusMessage && (
         <div
+          role="status"
+          aria-live="polite"
           className={`flex items-center justify-between rounded-2xl border p-4 text-sm transition animate-in fade-in duration-200 ${
             statusMessage.type === "success"
               ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-200"
               : statusMessage.type === "error"
-              ? "border-rose-500/40 bg-rose-500/10 text-rose-200"
-              : "border-cyan-500/40 bg-cyan-500/10 text-cyan-200"
-          }`}
+                ? "border-rose-500/40 bg-rose-500/10 text-rose-200"
+                : "border-cyan-500/40 bg-cyan-500/10 text-cyan-200"
+          } fixed right-4 top-4 z-50 w-[min(calc(100vw-2rem),28rem)] overflow-hidden shadow-2xl shadow-slate-950/40 backdrop-blur-md sm:right-6 sm:top-6 ${isStatusClosing ? "animate-status-popup-out" : "animate-status-popup-in"}`}
         >
-          <span>{statusMessage.text}</span>
+          <span className="animate-status-popup-content pr-3 leading-relaxed">
+            {statusMessage.text}
+          </span>
           <button
             type="button"
-            onClick={() => setStatusMessage(null)}
-            className="text-xs opacity-70 hover:opacity-100 cursor-pointer"
+            onClick={dismissStatusMessage}
+            aria-label="Dismiss notification"
+            className="animate-status-popup-content shrink-0 text-xs opacity-70 hover:opacity-100 cursor-pointer"
           >
             ✕
           </button>
@@ -1367,7 +1730,9 @@ function CreateContent() {
             <span className="flex h-6 w-6 items-center justify-center rounded-full bg-cyan-500/20 text-xs font-bold text-cyan-300">
               1
             </span>
-            <h2 className="text-base font-semibold text-white">Study Set Details, Shuffle &amp; Permissions</h2>
+            <h2 className="text-base font-semibold text-white">
+              Study Set Details, Shuffle &amp; Permissions
+            </h2>
           </div>
 
           <div className="flex items-center rounded-xl bg-slate-950 p-1 border border-slate-800">
@@ -1423,7 +1788,10 @@ function CreateContent() {
               <div>
                 {activeDeckRole === "viewer" ? (
                   <div className="flex items-start gap-3 rounded-2xl border border-amber-500/40 bg-amber-500/10 p-4 text-amber-200 animate-in fade-in duration-150">
-                    <Lock size={18} className="shrink-0 mt-0.5 text-amber-400" />
+                    <Lock
+                      size={18}
+                      className="shrink-0 mt-0.5 text-amber-400"
+                    />
                     <div className="space-y-1 text-xs">
                       <div className="flex items-center gap-2 font-bold text-sm text-amber-200">
                         <span>Read-Only Deck (Viewer Mode)</span>
@@ -1432,10 +1800,18 @@ function CreateContent() {
                         </span>
                       </div>
                       <p className="text-amber-300/90 leading-relaxed">
-                        This deck belongs to <strong>{activeDeckAuthorName}</strong>. You are viewing as <code className="bg-slate-900 px-1.5 py-0.5 rounded text-cyan-300 font-mono text-[11px]">{getCurrentUserId()}</code>. You do not have permission to overwrite the database original.
+                        This deck belongs to{" "}
+                        <strong>{activeDeckAuthorName}</strong>. You are viewing
+                        as{" "}
+                        <code className="bg-slate-900 px-1.5 py-0.5 rounded text-cyan-300 font-mono text-[11px]">
+                          {getCurrentUserId()}
+                        </code>
+                        . You do not have permission to overwrite the database
+                        original.
                       </p>
                       <p className="font-semibold text-amber-400">
-                        💡 Any edits you make will be saved cleanly as your own personal copy (fork) in your library.
+                        💡 Any edits you make will be saved cleanly as your own
+                        personal copy (fork) in your library.
                       </p>
                     </div>
                   </div>
@@ -1444,7 +1820,9 @@ function CreateContent() {
                     <div className="flex items-center gap-2">
                       <Shield size={16} className="text-indigo-400 shrink-0" />
                       <span>
-                        <strong>Collaborative Editor:</strong> You are authorized to update this shared deck. Changes will sync with the database.
+                        <strong>Collaborative Editor:</strong> You are
+                        authorized to update this shared deck. Changes will sync
+                        with the database.
                       </span>
                     </div>
                     <span className="text-[10px] text-indigo-300/70 font-mono hidden sm:inline">
@@ -1456,7 +1834,9 @@ function CreateContent() {
                     <div className="flex items-center gap-2">
                       <Crown size={16} className="text-cyan-400 shrink-0" />
                       <span>
-                        <strong>Deck Owner:</strong> You have full administrative control over this deck and its permissions.
+                        <strong>Deck Owner:</strong> You have full
+                        administrative control over this deck and its
+                        permissions.
                       </span>
                     </div>
                     <span className="text-[10px] text-cyan-300/70 font-mono hidden sm:inline">
@@ -1489,7 +1869,9 @@ function CreateContent() {
                 <Tag size={13} className="text-cyan-400" />
                 Persistent Set Tags (Sticky Across Cards)
               </label>
-              <span className="text-[11px] text-cyan-400 font-medium">Auto-Attached</span>
+              <span className="text-[11px] text-cyan-400 font-medium">
+                Auto-Attached
+              </span>
             </div>
             <input
               type="text"
@@ -1538,7 +1920,11 @@ function CreateContent() {
               className="inline-flex items-center gap-1.5 text-xs text-cyan-400 hover:text-cyan-300 transition cursor-pointer"
             >
               <Shield size={14} />
-              <span>{showPermissionsPanel ? "Hide Permissions & Access" : "Configure Access & Edit Permissions"}</span>
+              <span>
+                {showPermissionsPanel
+                  ? "Hide Permissions & Access"
+                  : "Configure Access & Edit Permissions"}
+              </span>
             </button>
           </div>
 
@@ -1563,7 +1949,8 @@ function CreateContent() {
                       🔒 Read-Only for Others (Recommended)
                     </div>
                     <p className="mt-1 text-[11px] text-slate-400 leading-tight">
-                      Other users can study and preview this deck, but cannot overwrite the original.
+                      Other users can study and preview this deck, but cannot
+                      overwrite the original.
                     </p>
                   </button>
 
@@ -1581,7 +1968,8 @@ function CreateContent() {
                       ✏️ Public Collaboration
                     </div>
                     <p className="mt-1 text-[11px] text-slate-400 leading-tight">
-                      Anyone with the share link or code can edit and save changes to this deck.
+                      Anyone with the share link or code can edit and save
+                      changes to this deck.
                     </p>
                   </button>
                 </div>
@@ -1594,7 +1982,9 @@ function CreateContent() {
                     <Users size={14} className="text-cyan-400" />
                     Authorized Editors &amp; Members
                   </span>
-                  <span className="text-[10px] text-slate-500">Only authorized users can edit when Read-Only</span>
+                  <span className="text-[10px] text-slate-500">
+                    Only authorized users can edit when Read-Only
+                  </span>
                 </label>
 
                 <div className="flex gap-2">
@@ -1607,7 +1997,9 @@ function CreateContent() {
                   />
                   <select
                     value={newCollabRole}
-                    onChange={(e) => setNewCollabRole(e.target.value as DeckPermissionRole)}
+                    onChange={(e) =>
+                      setNewCollabRole(e.target.value as DeckPermissionRole)
+                    }
                     className="rounded-2xl border border-slate-700 bg-slate-900 px-2.5 py-2 text-xs text-slate-200"
                   >
                     <option value="editor">Editor (Can Edit)</option>
@@ -1631,7 +2023,9 @@ function CreateContent() {
                         className="flex items-center justify-between rounded-xl border border-slate-800 bg-slate-900 px-3 py-1.5 text-xs"
                       >
                         <div className="flex items-center gap-2">
-                          <span className="font-medium text-slate-200">{collab.identifier}</span>
+                          <span className="font-medium text-slate-200">
+                            {collab.identifier}
+                          </span>
                           <span
                             className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${
                               collab.role === "editor"
@@ -1644,7 +2038,9 @@ function CreateContent() {
                         </div>
                         <button
                           type="button"
-                          onClick={() => handleRemoveCollaborator(collab.identifier)}
+                          onClick={() =>
+                            handleRemoveCollaborator(collab.identifier)
+                          }
                           className="text-slate-500 hover:text-rose-400 p-1 cursor-pointer"
                         >
                           <Trash2 size={13} />
@@ -1679,12 +2075,17 @@ function CreateContent() {
 
               {setDivisionConfig.enabled && (
                 <div className="flex items-center gap-1.5 text-xs">
-                  <span className="text-[11px] text-slate-400 font-medium">Naming:</span>
+                  <span className="text-[11px] text-slate-400 font-medium">
+                    Naming:
+                  </span>
                   <div className="flex rounded-lg bg-slate-900 p-0.5 border border-slate-800">
                     <button
                       type="button"
                       onClick={() =>
-                        setSetDivisionConfig((prev) => ({ ...prev, namingStyle: "letters" }))
+                        setSetDivisionConfig((prev) => ({
+                          ...prev,
+                          namingStyle: "letters",
+                        }))
                       }
                       className={`rounded px-2 py-0.5 text-[10px] font-bold transition cursor-pointer ${
                         setDivisionConfig.namingStyle === "letters"
@@ -1697,7 +2098,10 @@ function CreateContent() {
                     <button
                       type="button"
                       onClick={() =>
-                        setSetDivisionConfig((prev) => ({ ...prev, namingStyle: "numbers" }))
+                        setSetDivisionConfig((prev) => ({
+                          ...prev,
+                          namingStyle: "numbers",
+                        }))
                       }
                       className={`rounded px-2 py-0.5 text-[10px] font-bold transition cursor-pointer ${
                         setDivisionConfig.namingStyle === "numbers"
@@ -1731,11 +2135,16 @@ function CreateContent() {
                     }`}
                   >
                     <div className="flex items-center justify-between">
-                      <span className="font-bold text-white">Divide in Even Sets</span>
-                      <span className="text-[10px] text-cyan-400 font-medium">Remainder in Last Set</span>
+                      <span className="font-bold text-white">
+                        Divide in Even Sets
+                      </span>
+                      <span className="text-[10px] text-cyan-400 font-medium">
+                        Remainder in Last Set
+                      </span>
                     </div>
                     <p className="mt-1 text-[11px] text-slate-400">
-                      Splits into 2, 3, 4, etc. sets. If items are odd, extra card goes to the last set.
+                      Splits into 2, 3, 4, etc. sets. If items are odd, extra
+                      card goes to the last set.
                     </p>
 
                     {setDivisionConfig.mode === "count" && (
@@ -1781,8 +2190,12 @@ function CreateContent() {
                     }`}
                   >
                     <div className="flex items-center justify-between">
-                      <span className="font-bold text-white">Max Items / Set</span>
-                      <span className="text-[10px] text-cyan-400 font-medium">Predefined &amp; Custom</span>
+                      <span className="font-bold text-white">
+                        Max Items / Set
+                      </span>
+                      <span className="text-[10px] text-cyan-400 font-medium">
+                        Predefined &amp; Custom
+                      </span>
                     </div>
                     <p className="mt-1 text-[11px] text-slate-400">
                       Sets a cap like 20, 30, 40, 45 items per set.
@@ -1813,15 +2226,27 @@ function CreateContent() {
                         ))}
 
                         {/* Custom input */}
-                        <div className="flex items-center gap-1 ml-1" onClick={(e) => e.stopPropagation()}>
-                          <span className="text-[10px] text-slate-400">Custom:</span>
+                        <div
+                          className="flex items-center gap-1 ml-1"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <span className="text-[10px] text-slate-400">
+                            Custom:
+                          </span>
                           <input
                             type="number"
                             min={2}
                             value={setDivisionConfig.value}
                             onChange={(e) => {
-                              const val = Math.max(2, parseInt(e.target.value, 10) || 2);
-                              setSetDivisionConfig((prev) => ({ ...prev, mode: "size", value: val }));
+                              const val = Math.max(
+                                2,
+                                parseInt(e.target.value, 10) || 2,
+                              );
+                              setSetDivisionConfig((prev) => ({
+                                ...prev,
+                                mode: "size",
+                                value: val,
+                              }));
                             }}
                             className="w-12 rounded bg-slate-950 px-1 py-0.5 text-center font-mono text-xs font-bold text-cyan-300 border border-slate-800 focus:outline-none focus:border-cyan-400"
                           />
@@ -1850,7 +2275,7 @@ function CreateContent() {
                               createdAt: Date.now(),
                             })),
                             setDivisionConfig,
-                            setDivisionConfig.namingStyle
+                            setDivisionConfig.namingStyle,
                           ).length
                         }{" "}
                         Sets Total
@@ -1868,13 +2293,15 @@ function CreateContent() {
                           createdAt: Date.now(),
                         })),
                         setDivisionConfig,
-                        setDivisionConfig.namingStyle
+                        setDivisionConfig.namingStyle,
                       ).map((s) => (
                         <span
                           key={s.setIndex}
                           className="inline-flex items-center gap-1.5 rounded-lg border border-slate-800 bg-slate-900/90 px-2.5 py-1 text-xs text-slate-200"
                         >
-                          <span className="font-bold text-cyan-300">{s.setName}:</span>
+                          <span className="font-bold text-cyan-300">
+                            {s.setName}:
+                          </span>
                           <span>{s.cardCount} cards</span>
                           <span className="text-[10px] text-slate-500 font-mono">
                             (#{s.startIndex + 1}–#{s.endIndex})
@@ -1897,7 +2324,9 @@ function CreateContent() {
             <span className="flex h-6 w-6 items-center justify-center rounded-full bg-cyan-500/20 text-xs font-bold text-cyan-300">
               2
             </span>
-            <h2 className="text-base font-semibold text-white">Smart Paste (Reviewer / Bold / QA)</h2>
+            <h2 className="text-base font-semibold text-white">
+              Smart Paste (Reviewer / Bold / QA)
+            </h2>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
@@ -1921,7 +2350,7 @@ function CreateContent() {
                     window.dispatchEvent(
                       new CustomEvent("practical-tut-action", {
                         detail: { action: "select-tab-bulk" },
-                      })
+                      }),
                     );
                   }
                 }}
@@ -1943,7 +2372,7 @@ function CreateContent() {
                     window.dispatchEvent(
                       new CustomEvent("practical-tut-action", {
                         detail: { action: "select-tab-ai" },
-                      })
+                      }),
                     );
                   }
                 }}
@@ -1953,8 +2382,8 @@ function CreateContent() {
                     : "text-indigo-300 hover:text-white"
                 }`}
               >
-                <Wand2 size={14} className="text-amber-300 animate-pulse" />
-                ✨ DITroy AI Generator
+                <Wand2 size={14} className="text-amber-300 animate-pulse" />✨
+                DITroy AI Generator
               </button>
               <button
                 type="button"
@@ -1965,7 +2394,7 @@ function CreateContent() {
                     window.dispatchEvent(
                       new CustomEvent("practical-tut-action", {
                         detail: { action: "select-tab-rapid" },
-                      })
+                      }),
                     );
                   }
                 }}
@@ -1981,7 +2410,6 @@ function CreateContent() {
             </div>
           </div>
         </div>
-
 
         {/* TAB 1: UNIVERSAL SMART PARSER WITH DUAL NATIVE & AI DETECTION MODES */}
         {inputTab === "bulk" && (
@@ -2002,7 +2430,14 @@ function CreateContent() {
                         : "text-slate-400 hover:text-slate-200"
                     }`}
                   >
-                    <Zap size={14} className={smartDetectionEngine === "native" ? "text-slate-950" : "text-cyan-400"} />
+                    <Zap
+                      size={14}
+                      className={
+                        smartDetectionEngine === "native"
+                          ? "text-slate-950"
+                          : "text-cyan-400"
+                      }
+                    />
                     ⚡ Native Smart Auto-Detect
                   </button>
                   <button
@@ -2033,7 +2468,9 @@ function CreateContent() {
                 {/* Mode Toolbar */}
                 <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-800 bg-slate-950/70 p-3">
                   <div className="flex flex-wrap items-center gap-2 text-xs">
-                    <span className="font-semibold text-slate-300">Format Strategy:</span>
+                    <span className="font-semibold text-slate-300">
+                      Format Strategy:
+                    </span>
                     <button
                       type="button"
                       onClick={() => setParserMode("auto")}
@@ -2099,19 +2536,25 @@ function CreateContent() {
 
                 {/* Quick Sample Templates Chips */}
                 <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
-                  <span className="text-[11px] text-slate-400 font-medium">Quick Insert Sample Template:</span>
+                  <span className="text-[11px] text-slate-400 font-medium">
+                    Quick Insert Sample Template:
+                  </span>
                   <div className="flex flex-wrap items-center gap-1.5">
-                    {SAMPLE_FORMATS.filter((f) => f.engine === "native").map((f, idx) => (
-                      <button
-                        key={f.id}
-                        type="button"
-                        data-tut={idx === 0 ? "sample-template-btn" : undefined}
-                        onClick={() => handleInsertSample(f.sample, f.engine)}
-                        className="rounded-lg border border-slate-800 bg-slate-900/90 px-2.5 py-1 text-[11px] font-medium text-slate-300 hover:border-cyan-500/40 hover:text-cyan-300 transition cursor-pointer"
-                      >
-                        {f.title.replace(/^\d+\.\s*/, "")}
-                      </button>
-                    ))}
+                    {SAMPLE_FORMATS.filter((f) => f.engine === "native").map(
+                      (f, idx) => (
+                        <button
+                          key={f.id}
+                          type="button"
+                          data-tut={
+                            idx === 0 ? "sample-template-btn" : undefined
+                          }
+                          onClick={() => handleInsertSample(f.sample, f.engine)}
+                          className="rounded-lg border border-slate-800 bg-slate-900/90 px-2.5 py-1 text-[11px] font-medium text-slate-300 hover:border-cyan-500/40 hover:text-cyan-300 transition cursor-pointer"
+                        >
+                          {f.title.replace(/^\d+\.\s*/, "")}
+                        </button>
+                      ),
+                    )}
                   </div>
                 </div>
 
@@ -2126,7 +2569,6 @@ function CreateContent() {
                     className="w-full font-mono text-xs leading-relaxed rounded-2xl border border-slate-700 bg-slate-950 p-4 text-slate-100 placeholder:text-slate-600 outline-none focus:border-cyan-400"
                   />
                 </div>
-
 
                 {/* Live Detected Preview Box */}
                 {liveParsedPreview.length > 0 && (
@@ -2151,14 +2593,22 @@ function CreateContent() {
                         >
                           <div className="flex-1 space-y-1">
                             <div className="flex items-start gap-1.5">
-                              <span className="font-bold text-cyan-400 shrink-0">Q{idx + 1}:</span>
-                              <span className="text-slate-100 leading-relaxed font-medium">{item.question}</span>
+                              <span className="font-bold text-cyan-400 shrink-0">
+                                Q{idx + 1}:
+                              </span>
+                              <span className="text-slate-100 leading-relaxed font-medium">
+                                {item.question}
+                              </span>
                             </div>
                           </div>
                           <div className="shrink-0 sm:max-w-xs sm:w-1/3 pl-3 sm:border-l border-slate-800/80">
                             <div className="flex items-start gap-1.5">
-                              <span className="font-bold text-emerald-400 shrink-0">Ans:</span>
-                              <span className="font-semibold text-emerald-300 leading-relaxed">{item.answer}</span>
+                              <span className="font-bold text-emerald-400 shrink-0">
+                                Ans:
+                              </span>
+                              <span className="font-semibold text-emerald-300 leading-relaxed">
+                                {item.answer}
+                              </span>
                             </div>
                           </div>
                         </div>
@@ -2177,12 +2627,18 @@ function CreateContent() {
                   <button
                     type="button"
                     data-tut="stage-bulk-btn"
-                    disabled={!bulkText.trim() || liveParsedPreview.length === 0}
+                    disabled={
+                      !bulkText.trim() || liveParsedPreview.length === 0
+                    }
                     onClick={handleApplyBulkCards}
                     className="inline-flex items-center gap-2 rounded-full bg-cyan-500 px-6 py-2.5 text-xs font-bold text-slate-950 hover:bg-cyan-400 transition disabled:opacity-40 cursor-pointer shadow-lg shadow-cyan-500/20"
                   >
                     <Plus size={16} />
-                    Stage {liveParsedPreview.length > 0 ? liveParsedPreview.length : ""} Flashcards
+                    Stage{" "}
+                    {liveParsedPreview.length > 0
+                      ? liveParsedPreview.length
+                      : ""}{" "}
+                    Flashcards
                   </button>
                 </div>
               </div>
@@ -2202,16 +2658,29 @@ function CreateContent() {
                         : "border-slate-800 bg-slate-900/60 text-slate-400 hover:border-slate-700"
                     }`}
                   >
-                    <BookOpen size={18} className={aiDetectSubMode === "from-context" ? "text-cyan-400 shrink-0 mt-0.5" : "text-slate-500 shrink-0 mt-0.5"} />
+                    <BookOpen
+                      size={18}
+                      className={
+                        aiDetectSubMode === "from-context"
+                          ? "text-cyan-400 shrink-0 mt-0.5"
+                          : "text-slate-500 shrink-0 mt-0.5"
+                      }
+                    />
                     <div>
                       <div className="font-bold text-xs flex items-center gap-1.5 text-white">
-                        <span>📚 Synthesize Q&amp;A from Context / Raw Notes</span>
+                        <span>
+                          📚 Synthesize Q&amp;A from Context / Raw Notes
+                        </span>
                         {aiDetectSubMode === "from-context" && (
-                          <span className="rounded bg-cyan-500/20 px-1.5 py-0.2 text-[10px] text-cyan-300 font-bold">Active</span>
+                          <span className="rounded bg-cyan-500/20 px-1.5 py-0.2 text-[10px] text-cyan-300 font-bold">
+                            Active
+                          </span>
                         )}
                       </div>
                       <p className="mt-1 text-[11px] text-slate-300 leading-tight">
-                        Paste lecture slides, paragraphs, textbook pages, or study notes. AI crafts new comprehensive questions and answers.
+                        Paste lecture slides, paragraphs, textbook pages, or
+                        study notes. AI crafts new comprehensive questions and
+                        answers.
                       </p>
                     </div>
                   </button>
@@ -2225,16 +2694,27 @@ function CreateContent() {
                         : "border-slate-800 bg-slate-900/60 text-slate-400 hover:border-slate-700"
                     }`}
                   >
-                    <Bot size={18} className={aiDetectSubMode === "detect-qa" ? "text-indigo-400 shrink-0 mt-0.5" : "text-slate-500 shrink-0 mt-0.5"} />
+                    <Bot
+                      size={18}
+                      className={
+                        aiDetectSubMode === "detect-qa"
+                          ? "text-indigo-400 shrink-0 mt-0.5"
+                          : "text-slate-500 shrink-0 mt-0.5"
+                      }
+                    />
                     <div>
                       <div className="font-bold text-xs flex items-center gap-1.5 text-white">
                         <span>🔍 Auto-Detect Embedded Q&amp;A Pairs</span>
                         {aiDetectSubMode === "detect-qa" && (
-                          <span className="rounded bg-indigo-500/20 px-1.5 py-0.2 text-[10px] text-indigo-300 font-bold">Active</span>
+                          <span className="rounded bg-indigo-500/20 px-1.5 py-0.2 text-[10px] text-indigo-300 font-bold">
+                            Active
+                          </span>
                         )}
                       </div>
                       <p className="mt-1 text-[11px] text-slate-300 leading-tight">
-                        Paste messy or irregular text that contains existing questions and answers. AI extracts and cleans each pair cleanly.
+                        Paste messy or irregular text that contains existing
+                        questions and answers. AI extracts and cleans each pair
+                        cleanly.
                       </p>
                     </div>
                   </button>
@@ -2243,17 +2723,20 @@ function CreateContent() {
                 {/* AI Controls */}
                 <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
                   <div className="flex items-center gap-2 text-xs">
-                    <span className="text-slate-300 font-semibold">Card Target Count:</span>
+                    <span className="text-slate-300 font-semibold">
+                      Card Target Count:
+                    </span>
                     <select
                       value={aiDetectCardCount}
-                      onChange={(e) => setAiDetectCardCount(Number(e.target.value))}
+                      onChange={(e) =>
+                        setAiDetectCardCount(Number(e.target.value))
+                      }
                       className="rounded-xl border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs text-slate-100 outline-none focus:border-cyan-400"
                     >
                       <option value={3}>3 Flashcards (Quick)</option>
                       <option value={5}>5 Flashcards (Standard)</option>
                       <option value={10}>10 Flashcards (Comprehensive)</option>
                       <option value={15}>15 Flashcards (Deep Dive)</option>
-                      <option value={20}>20 Flashcards (Full Set)</option>
                     </select>
                   </div>
 
@@ -2264,18 +2747,22 @@ function CreateContent() {
 
                 {/* Quick Sample Prompts for AI */}
                 <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
-                  <span className="text-[11px] text-indigo-300 font-medium">Quick Insert Sample Study Material:</span>
+                  <span className="text-[11px] text-indigo-300 font-medium">
+                    Quick Insert Sample Study Material:
+                  </span>
                   <div className="flex flex-wrap items-center gap-1.5">
-                    {SAMPLE_FORMATS.filter((f) => f.engine === "ai").map((f) => (
-                      <button
-                        key={f.id}
-                        type="button"
-                        onClick={() => handleInsertSample(f.sample, f.engine)}
-                        className="rounded-lg border border-indigo-500/40 bg-indigo-950/60 px-2.5 py-1 text-[11px] font-medium text-indigo-200 hover:border-indigo-400 hover:text-white transition cursor-pointer"
-                      >
-                        {f.title.replace(/^\d+\.\s*/, "")}
-                      </button>
-                    ))}
+                    {SAMPLE_FORMATS.filter((f) => f.engine === "ai").map(
+                      (f) => (
+                        <button
+                          key={f.id}
+                          type="button"
+                          onClick={() => handleInsertSample(f.sample, f.engine)}
+                          className="rounded-lg border border-indigo-500/40 bg-indigo-950/60 px-2.5 py-1 text-[11px] font-medium text-indigo-200 hover:border-indigo-400 hover:text-white transition cursor-pointer"
+                        >
+                          {f.title.replace(/^\d+\.\s*/, "")}
+                        </button>
+                      ),
+                    )}
                   </div>
                 </div>
 
@@ -2294,13 +2781,15 @@ function CreateContent() {
                   />
                 </div>
 
-
                 {/* AI Detected Cards Preview */}
                 {aiDetectedCards.length > 0 && (
                   <div className="rounded-2xl border border-indigo-500/40 bg-slate-950/90 p-4 space-y-3 animate-in fade-in duration-200">
                     <div className="flex items-center justify-between border-b border-slate-800 pb-2.5">
                       <div className="flex items-center gap-2">
-                        <Sparkles size={16} className="text-amber-300 animate-pulse" />
+                        <Sparkles
+                          size={16}
+                          className="text-amber-300 animate-pulse"
+                        />
                         <h4 className="text-xs font-bold text-white uppercase tracking-wider">
                           DITroy AI Flashcard Results ({aiDetectedCards.length})
                         </h4>
@@ -2318,21 +2807,36 @@ function CreateContent() {
                         >
                           <div className="flex-1 space-y-1.5">
                             <div className="flex items-start gap-1.5">
-                              <span className="font-bold text-cyan-400 shrink-0">Q{idx + 1}:</span>
-                              <span className="text-slate-100 font-medium leading-relaxed">{card.question}</span>
+                              <span className="font-bold text-cyan-400 shrink-0">
+                                Q{idx + 1}:
+                              </span>
+                              <span className="text-slate-100 font-medium leading-relaxed">
+                                {card.question}
+                              </span>
                             </div>
                             <div className="flex items-start gap-1.5">
-                              <span className="font-bold text-emerald-400 shrink-0">Ans:</span>
-                              <span className="text-emerald-300 font-semibold leading-relaxed">{card.answer}</span>
+                              <span className="font-bold text-emerald-400 shrink-0">
+                                Ans:
+                              </span>
+                              <span className="text-emerald-300 font-semibold leading-relaxed">
+                                {card.answer}
+                              </span>
                             </div>
                           </div>
 
                           <div className="shrink-0 flex items-center gap-2 sm:flex-col sm:items-end">
                             <div className="flex items-center gap-1">
-                              <span className="text-[10px] text-slate-400">Diff:</span>
+                              <span className="text-[10px] text-slate-400">
+                                Diff:
+                              </span>
                               <select
                                 value={card.difficulty}
-                                onChange={(e) => handleAiDetectedDifficultyChange(card.tempId, Number(e.target.value))}
+                                onChange={(e) =>
+                                  handleAiDetectedDifficultyChange(
+                                    card.tempId,
+                                    Number(e.target.value),
+                                  )
+                                }
                                 className="rounded bg-slate-800 px-1.5 py-0.5 text-[10px] text-slate-200 border border-slate-700"
                               >
                                 <option value={1}>1 Easy</option>
@@ -2345,7 +2849,9 @@ function CreateContent() {
 
                             <button
                               type="button"
-                              onClick={() => handleDeleteAiDetectedCard(card.tempId)}
+                              onClick={() =>
+                                handleDeleteAiDetectedCard(card.tempId)
+                              }
                               className="text-slate-500 hover:text-rose-400 p-1 cursor-pointer"
                               title="Remove card"
                             >
@@ -2368,10 +2874,13 @@ function CreateContent() {
                       </span>
                     ) : aiDetectedCards.length > 0 ? (
                       <span className="text-emerald-400 font-medium">
-                        ✨ {aiDetectedCards.length} flashcards ready to add to your deck.
+                        ✨ {aiDetectedCards.length} flashcards ready to add to
+                        your deck.
                       </span>
                     ) : (
-                      <span>Paste notes above and click Run AI Smart Detect.</span>
+                      <span>
+                        Paste notes above and click Run AI Smart Detect.
+                      </span>
                     )}
                   </div>
 
@@ -2409,6 +2918,21 @@ function CreateContent() {
                         <span>Stage All {aiDetectedCards.length} AI Cards</span>
                       </button>
                     )}
+                    {aiDetectedCards.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={handleRunAiSmartDetect}
+                        disabled={isAiDetecting || !bulkText.trim()}
+                        className="inline-flex items-center gap-2 rounded-full border border-cyan-400/60 bg-cyan-500/10 px-5 py-2.5 text-xs font-bold text-cyan-200 hover:bg-cyan-500/20 transition disabled:opacity-40 cursor-pointer"
+                      >
+                        {isAiDetecting ? (
+                          <Loader2 size={15} className="animate-spin" />
+                        ) : (
+                          <Plus size={15} />
+                        )}
+                        <span>Continue with {aiDetectCardCount} More</span>
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
@@ -2428,7 +2952,10 @@ function CreateContent() {
                 </h3>
               </div>
               <p className="text-xs text-slate-300 leading-relaxed">
-                Type any study topic, or paste lecture transcripts, syllabus bullet points, textbook excerpts, or unformatted notes. DITroy AI will automatically extract high-yield questions, definitions, difficulty ratings, and tags!
+                Type any study topic, or paste lecture transcripts, syllabus
+                bullet points, textbook excerpts, or unformatted notes. DITroy
+                AI will automatically extract high-yield questions, definitions,
+                difficulty ratings, and tags!
               </p>
 
               <div className="grid gap-4 md:grid-cols-3">
@@ -2439,7 +2966,9 @@ function CreateContent() {
                     </label>
                     <button
                       type="button"
-                      onClick={() => setAiTopic("Computer Networks: TCP/IP vs OSI Model")}
+                      onClick={() =>
+                        setAiTopic("Computer Networks: TCP/IP vs OSI Model")
+                      }
                       className="text-[11px] text-cyan-400 hover:text-cyan-300 hover:underline cursor-pointer flex items-center gap-1"
                     >
                       ⚡ Use Example: Computer Networks
@@ -2467,7 +2996,6 @@ function CreateContent() {
                     <option value={5}>5 Flashcards (Standard)</option>
                     <option value={10}>10 Flashcards (Comprehensive)</option>
                     <option value={15}>15 Flashcards (Deep Dive)</option>
-                    <option value={20}>20 Flashcards (Full Deck)</option>
                   </select>
                 </div>
               </div>
@@ -2475,7 +3003,9 @@ function CreateContent() {
               <div className="space-y-1.5">
                 <label className="flex items-center justify-between text-xs font-semibold text-slate-200">
                   <span>Source Text / Notes (Optional but recommended)</span>
-                  <span className="text-[11px] text-slate-400">Paste your raw notes, articles, or transcripts</span>
+                  <span className="text-[11px] text-slate-400">
+                    Paste your raw notes, articles, or transcripts
+                  </span>
                 </label>
                 <textarea
                   value={aiNotes}
@@ -2494,7 +3024,9 @@ function CreateContent() {
                       DITroy AI is processing content...
                     </span>
                   ) : (
-                    <span>Ready to generate {aiCardCount} flashcards with AI.</span>
+                    <span>
+                      Ready to generate {aiCardCount} flashcards with AI.
+                    </span>
                   )}
                 </div>
 
@@ -2502,7 +3034,7 @@ function CreateContent() {
                   type="button"
                   data-tut="ai-generate-btn"
                   disabled={aiLoading}
-                  onClick={handleGenerateWithAI}
+                  onClick={() => handleGenerateWithAI()}
                   className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-indigo-500 to-cyan-500 px-6 py-2.5 text-xs font-bold text-white shadow-lg shadow-indigo-500/20 hover:from-indigo-400 hover:to-cyan-400 transition disabled:opacity-40 cursor-pointer"
                 >
                   {aiLoading ? (
@@ -2513,7 +3045,11 @@ function CreateContent() {
                   ) : (
                     <>
                       <Sparkles size={16} className="text-amber-300" />
-                      <span>Generate Flashcards with DITroy AI</span>
+                      <span>
+                        {aiGeneratedCards.length > 0
+                          ? `Regenerate ${aiCardCount} Flashcards`
+                          : "Generate Flashcards with DITroy AI"}
+                      </span>
                     </>
                   )}
                 </button>
@@ -2537,7 +3073,29 @@ function CreateContent() {
                     className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500 px-4 py-1.5 text-xs font-bold text-slate-950 hover:bg-emerald-400 transition cursor-pointer shadow-md shadow-emerald-500/20"
                   >
                     <Plus size={14} />
-                    <span>Add All to Deck Queue ({aiGeneratedCards.length})</span>
+                    <span>
+                      Add All to Deck Queue ({aiGeneratedCards.length})
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleContinueAiGeneration}
+                    disabled={
+                      aiLoading ||
+                      aiGeneratedCards.length >= MAX_AI_PREVIEW_CARDS
+                    }
+                    className="inline-flex items-center gap-2 rounded-full border border-cyan-400/60 bg-cyan-500/10 px-5 py-2.5 text-xs font-bold text-cyan-200 hover:bg-cyan-500/20 transition disabled:opacity-40 cursor-pointer"
+                  >
+                    {aiLoading ? (
+                      <Loader2 size={15} className="animate-spin" />
+                    ) : (
+                      <Plus size={15} />
+                    )}
+                    <span>
+                      {aiGeneratedCards.length >= MAX_AI_PREVIEW_CARDS
+                        ? "Preview Limit Reached"
+                        : `Continue with ${Math.min(aiCardCount, MAX_AI_PREVIEW_CARDS - aiGeneratedCards.length)} More`}
+                    </span>
                   </button>
                 </div>
 
@@ -2549,13 +3107,20 @@ function CreateContent() {
                     >
                       <div className="flex-1 space-y-1.5">
                         <div className="flex items-start gap-1.5">
-                          <span className="font-bold text-indigo-400 shrink-0">Q{idx + 1}:</span>
-                          <span className="text-slate-100 font-medium leading-relaxed">{item.question}</span>
+                          <span className="font-bold text-indigo-400 shrink-0">
+                            Q{idx + 1}:
+                          </span>
+                          <span className="text-slate-100 font-medium leading-relaxed">
+                            {item.question}
+                          </span>
                         </div>
                         {item.tags && item.tags.length > 0 && (
                           <div className="flex flex-wrap gap-1 mt-1">
                             {item.tags.map((t, ti) => (
-                              <span key={ti} className="rounded bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 px-1.5 py-0.5 text-[10px]">
+                              <span
+                                key={ti}
+                                className="rounded bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 px-1.5 py-0.5 text-[10px]"
+                              >
                                 #{t}
                               </span>
                             ))}
@@ -2564,8 +3129,12 @@ function CreateContent() {
                       </div>
                       <div className="shrink-0 sm:max-w-xs sm:w-2/5 pl-3 sm:border-l border-slate-800/80 space-y-1">
                         <div className="flex items-start gap-1.5">
-                          <span className="font-bold text-emerald-400 shrink-0">Ans:</span>
-                          <span className="font-semibold text-emerald-300 leading-relaxed">{item.answer}</span>
+                          <span className="font-bold text-emerald-400 shrink-0">
+                            Ans:
+                          </span>
+                          <span className="font-semibold text-emerald-300 leading-relaxed">
+                            {item.answer}
+                          </span>
                         </div>
                         <div className="text-[10px] text-slate-400">
                           Difficulty: {item.difficulty}/5
@@ -2598,7 +3167,9 @@ function CreateContent() {
                       ⚡ Insert Sample Q&amp;A
                     </button>
                   </div>
-                  <span className="text-[11px] text-slate-500">Shortcut: Ctrl+Enter to stage</span>
+                  <span className="text-[11px] text-slate-500">
+                    Shortcut: Ctrl+Enter to stage
+                  </span>
                 </label>
                 <textarea
                   ref={questionInputRef}
@@ -2633,7 +3204,8 @@ function CreateContent() {
               <div className="text-xs text-slate-400 flex items-center gap-1.5">
                 <span className="h-2 w-2 rounded-full bg-cyan-400" />
                 <span>
-                  Difficulty will be set in Step 3 once you finish pasting all cards.
+                  Difficulty will be set in Step 3 once you finish pasting all
+                  cards.
                 </span>
               </div>
 
@@ -2659,10 +3231,12 @@ function CreateContent() {
             </span>
             <div>
               <h2 className="text-base font-semibold text-white">
-                Set Difficulties &amp; Polish ({stagedCards.length} Staged Cards)
+                Set Difficulties &amp; Polish ({stagedCards.length} Staged
+                Cards)
               </h2>
               <p className="text-xs text-slate-400">
-                Assign difficulty per card or use the 1-click batch setter below.
+                Assign difficulty per card or use the 1-click batch setter
+                below.
               </p>
             </div>
           </div>
@@ -2670,7 +3244,9 @@ function CreateContent() {
           {/* Quick Batch Set Buttons */}
           {stagedCards.length > 0 && (
             <div className="flex flex-wrap items-center gap-1.5">
-              <span className="text-[11px] font-medium text-slate-400 mr-1">Batch Set All:</span>
+              <span className="text-[11px] font-medium text-slate-400 mr-1">
+                Batch Set All:
+              </span>
               {[1, 2, 3, 4, 5].map((lvl) => (
                 <button
                   key={lvl}
@@ -2691,7 +3267,8 @@ function CreateContent() {
             <div className="rounded-2xl border border-dashed border-slate-800 bg-slate-950/40 p-8 text-center text-slate-400">
               <p className="text-sm">No cards staged yet.</p>
               <p className="mt-1 text-xs text-slate-500">
-                Paste questions &amp; answers in Step 2 above. They will appear here ready for difficulty assignment!
+                Paste questions &amp; answers in Step 2 above. They will appear
+                here ready for difficulty assignment!
               </p>
             </div>
           ) : (
@@ -2706,7 +3283,9 @@ function CreateContent() {
                   {isEditing ? (
                     <div className="space-y-3">
                       <div>
-                        <label className="text-[11px] text-slate-400">Question</label>
+                        <label className="text-[11px] text-slate-400">
+                          Question
+                        </label>
                         <input
                           type="text"
                           value={editQuestion}
@@ -2715,7 +3294,9 @@ function CreateContent() {
                         />
                       </div>
                       <div>
-                        <label className="text-[11px] text-slate-400">Answer</label>
+                        <label className="text-[11px] text-slate-400">
+                          Answer
+                        </label>
                         <input
                           type="text"
                           value={editAnswer}
@@ -2752,7 +3333,9 @@ function CreateContent() {
                           </h4>
                         </div>
                         <p className="text-xs text-emerald-300 font-medium pl-7">
-                          <span className="text-slate-400 font-normal mr-1">Answer:</span>
+                          <span className="text-slate-400 font-normal mr-1">
+                            Answer:
+                          </span>
                           {card.answer}
                         </p>
                         {card.tags && card.tags.length > 0 && (
@@ -2776,11 +3359,14 @@ function CreateContent() {
                             <button
                               key={lvl}
                               type="button"
-                              onClick={() => handleCardDifficultyChange(card.tempId, lvl)}
-                              className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition cursor-pointer ${card.difficulty === lvl
+                              onClick={() =>
+                                handleCardDifficultyChange(card.tempId, lvl)
+                              }
+                              className={`rounded-lg px-2.5 py-1 text-xs font-semibold transition cursor-pointer ${
+                                card.difficulty === lvl
                                   ? difficultyLabels[lvl].color
                                   : "text-slate-400 hover:text-white"
-                                }`}
+                              }`}
                             >
                               {lvl}
                             </button>
@@ -2824,10 +3410,12 @@ function CreateContent() {
           </div>
           <div>
             <p className="text-sm font-semibold text-white">
-              {stagedCards.length} Cards Ready in &quot;{deckTitle.trim() || "Untitled Study Set"}&quot;
+              {stagedCards.length} Cards Ready in &quot;
+              {deckTitle.trim() || "Untitled Study Set"}&quot;
             </p>
             <p className="text-xs text-slate-400">
-              Difficulties &amp; tags assigned. Ready to save or share with peers.
+              Difficulties &amp; tags assigned. Ready to save or share with
+              peers.
             </p>
           </div>
         </div>
@@ -2862,7 +3450,7 @@ function CreateContent() {
                 window.dispatchEvent(
                   new CustomEvent("practical-tut-action", {
                     detail: { action: "save-deck" },
-                  })
+                  }),
                 );
               }
               if (stagedCards.length === 0) {
@@ -2870,7 +3458,8 @@ function CreateContent() {
                   {
                     tempId: "staged-quick-1",
                     question: "What is active recall?",
-                    answer: "Testing your memory without looking at the answer.",
+                    answer:
+                      "Testing your memory without looking at the answer.",
                     tags: ["Study"],
                     difficulty: 3,
                   },
@@ -2883,12 +3472,12 @@ function CreateContent() {
             {isSaving
               ? "Saving..."
               : targetDeckMode === "existing" && activeDeckRole === "viewer"
-              ? "Save as My Own Copy (Fork)"
-              : targetDeckMode === "existing" && activeDeckRole === "editor"
-              ? "Sync to Shared Deck"
-              : targetDeckMode === "existing"
-              ? "Save Changes to Deck"
-              : "Save Deck"}
+                ? "Save as My Own Copy (Fork)"
+                : targetDeckMode === "existing" && activeDeckRole === "editor"
+                  ? "Sync to Shared Deck"
+                  : targetDeckMode === "existing"
+                    ? "Save Changes to Deck"
+                    : "Save Deck"}
             <ArrowRight size={15} />
           </button>
         </div>
@@ -2910,7 +3499,6 @@ function CreateContent() {
         onInsertSample={handleInsertSample}
       />
     </div>
-
   );
 }
 

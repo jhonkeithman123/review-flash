@@ -4,6 +4,23 @@ All notable changes, bug fixes, feature milestones, and architecture upgrades fo
 
 ---
 
+## [v2.2.2] — October 23, 2026
+### Reliable AI Deck Studio & Draft Continuity Patch
+
+#### 🐛 Bug Fixes
+- **DITroy AI Browser Connectivity**: Routed browser AI requests through a same-origin Next.js proxy to avoid external API CORS failures.
+- **AI Reply Extraction**: Added recovery for fenced, wrapped, nested, and partially truncated JSON replies.
+- **AI Continuation Stability**: Prevented continuation batches from replacing existing previews, filtered duplicate questions, and bounded oversized exclusion prompts.
+- **Native Auto-Detect Parsing**: Improved numbered-header detection for compact and multiline reviewer formats.
+- **Staged Draft Persistence**: Preserved staged cards across refreshes while clearing the draft cache after a successful save.
+
+#### ⚡ Improvements & New Features
+- **Generate, Regenerate, and Continue**: Generate creates the first batch, Regenerate replaces it with a fresh set, and Continue appends additional cards.
+- **AI Batch Controls**: Added 5, 10, and 15-card generation choices with a guarded 45-card preview limit.
+- **Animated Notifications**: Status messages now enter as a circle, expand into a readable popup, and collapse upward when dismissed.
+
+---
+
 ## [v2.2.1] — September 15, 2026
 ### Minor Bug Fix & Improvement Update
 *Codename: Adaptive Typography, Tactile 3D Deck Transitions & Spring Popovers*

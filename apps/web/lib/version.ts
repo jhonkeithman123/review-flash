@@ -12,6 +12,11 @@ export interface VersionInfo {
 
 export const VERSION_HISTORY: readonly VersionInfo[] = [
   {
+    version: "v2.2.2",
+    codename: "Reliable AI Deck Studio & Draft Continuity Patch",
+    releaseDate: "October 23, 2026",
+  },
+  {
     version: "v2.2.1",
     codename: "Adaptive Typography & Tactile 3D Deck Transitions (Minor Bug Fix & Improvement Update)",
     releaseDate: "September 15, 2026",

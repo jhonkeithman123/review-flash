@@ -42,14 +42,30 @@ html {
 body {
   background-color: var(--background);
   color: var(--foreground);
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Open Sans", "Helvetica Neue", sans-serif;
+  font-family:
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    Roboto,
+    Oxygen,
+    Ubuntu,
+    Cantarell,
+    "Open Sans",
+    "Helvetica Neue",
+    sans-serif;
   min-height: 100vh;
   min-height: 100dvh;
   overscroll-behavior-y: none;
 }
 
 /* Touch responsiveness optimization for WebViews (FB/Messenger) */
-button, a, input, select, textarea, [role="button"] {
+button,
+a,
+input,
+select,
+textarea,
+[role="button"] {
   touch-action: manipulation;
   -webkit-tap-highlight-color: transparent;
 }
@@ -120,7 +136,8 @@ button, a, input, select, textarea, [role="button"] {
 /* Modal Spring Bloom / Grow Animation from Trigger Origin */
 @keyframes jumpModalGrowIn {
   0% {
-    transform: translate3d(var(--origin-dx, 0px), var(--origin-dy, 30px), 0px) scale(0.08);
+    transform: translate3d(var(--origin-dx, 0px), var(--origin-dy, 30px), 0px)
+      scale(0.08);
     opacity: 0;
   }
   65% {
@@ -139,7 +156,8 @@ button, a, input, select, textarea, [role="button"] {
     opacity: 1;
   }
   100% {
-    transform: translate3d(var(--origin-dx, 0px), var(--origin-dy, 30px), 0px) scale(0.08);
+    transform: translate3d(var(--origin-dx, 0px), var(--origin-dy, 30px), 0px)
+      scale(0.08);
     opacity: 0;
   }
 }
@@ -154,6 +172,81 @@ button, a, input, select, textarea, [role="button"] {
   animation: jumpModalGrowOut 240ms cubic-bezier(0.4, 0, 0.2, 1) forwards;
   transform-origin: var(--origin-pos, center center);
   will-change: transform, opacity;
+}
+
+/* Status popup drops in as a dot, opens for reading, and closes upward as a dot. */
+@keyframes statusPopupIn {
+  0% {
+    transform: translateY(-28px) scale(0.08);
+    border-radius: 9999px;
+    opacity: 0;
+  }
+  38% {
+    transform: translateY(12px) scale(0.08);
+    border-radius: 9999px;
+    opacity: 1;
+  }
+  72% {
+    transform: translateY(-3px) scale(1.03);
+    border-radius: 1rem;
+  }
+  100% {
+    transform: translateY(0) scale(1);
+    border-radius: 1rem;
+    opacity: 1;
+  }
+}
+
+@keyframes statusPopupOut {
+  0% {
+    transform: translateY(0) scale(1);
+    border-radius: 1rem;
+    opacity: 1;
+  }
+  45% {
+    transform: translateY(10px) scale(0.08);
+    border-radius: 9999px;
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(-30px) scale(0.08);
+    border-radius: 9999px;
+    opacity: 0;
+  }
+}
+
+@keyframes statusPopupContentIn {
+  0%,
+  55% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+.animate-status-popup-in {
+  animation: statusPopupIn 520ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  transform-origin: top right;
+  will-change: transform, opacity, border-radius;
+}
+
+.animate-status-popup-out {
+  animation: statusPopupOut 360ms cubic-bezier(0.4, 0, 0.2, 1) both;
+  transform-origin: top right;
+  will-change: transform, opacity, border-radius;
+}
+
+.animate-status-popup-content {
+  animation: statusPopupContentIn 520ms ease both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-status-popup-in,
+  .animate-status-popup-out,
+  .animate-status-popup-content {
+    animation: none;
+  }
 }
 
 /* Music Lounge "Dragged to Middle then Grew Up" Animation */
@@ -248,11 +341,13 @@ button, a, input, select, textarea, [role="button"] {
 @keyframes deckDealNext {
   0% {
     opacity: 0;
-    transform: translate3d(60px, -10px, -40px) rotate(4deg) rotateY(-10deg) scale(0.9);
+    transform: translate3d(60px, -10px, -40px) rotate(4deg) rotateY(-10deg)
+      scale(0.9);
     filter: blur(4px);
   }
   65% {
-    transform: translate3d(-4px, 2px, 0px) rotate(-0.5deg) rotateY(1deg) scale(1.02);
+    transform: translate3d(-4px, 2px, 0px) rotate(-0.5deg) rotateY(1deg)
+      scale(1.02);
     opacity: 1;
     filter: blur(0px);
   }
@@ -266,11 +361,13 @@ button, a, input, select, textarea, [role="button"] {
 @keyframes deckDealPrev {
   0% {
     opacity: 0;
-    transform: translate3d(-60px, -10px, -40px) rotate(-4deg) rotateY(10deg) scale(0.9);
+    transform: translate3d(-60px, -10px, -40px) rotate(-4deg) rotateY(10deg)
+      scale(0.9);
     filter: blur(4px);
   }
   65% {
-    transform: translate3d(4px, 2px, 0px) rotate(0.5deg) rotateY(-1deg) scale(1.02);
+    transform: translate3d(4px, 2px, 0px) rotate(0.5deg) rotateY(-1deg)
+      scale(1.02);
     opacity: 1;
     filter: blur(0px);
   }
@@ -477,8 +574,3 @@ button, a, input, select, textarea, [role="button"] {
   animation: dropdownItemSlide 220ms cubic-bezier(0.16, 1, 0.3, 1) both;
   will-change: transform, opacity;
 }
-
-
-
-
-

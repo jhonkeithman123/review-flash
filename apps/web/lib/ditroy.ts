@@ -7,8 +7,13 @@ export const DITROY_RENDER_URL = "https://ditroy.onrender.com";
  * Auto-corrects typo 'ditroy-ai.onrender.com' to 'ditroy.onrender.com'.
  */
 export function getDitroyApiUrl(): string {
-  const envUrl = process.env.NEXT_PUBLIC_DITROY_API_URL || process.env.DITROY_API_URL;
-  if (!envUrl || envUrl.trim() === "" || envUrl.includes("ditroy-ai.onrender.com")) {
+  const envUrl =
+    process.env.NEXT_PUBLIC_DITROY_API_URL || process.env.DITROY_API_URL;
+  if (
+    !envUrl ||
+    envUrl.trim() === "" ||
+    envUrl.includes("ditroy-ai.onrender.com")
+  ) {
     return DITROY_RENDER_URL;
   }
   return envUrl.trim();
@@ -26,6 +31,26 @@ export const ditroyClient = new DitroyClient({
   timeoutMs: 90000,
 });
 
+async function chatWithDitroy(request: {
+  message: string;
+  conversation_id: string;
+}): Promise<{ reply: string }> {
+  if (typeof window === "undefined") {
+    return ditroyClient.chat(request);
+  }
+
+  const response = await fetch("/api/ditroy/chat", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request),
+  });
+
+  const body = await response.json();
+  if (!response.ok) {
+    throw new Error(body?.detail || "DITroy AI request failed.");
+  }
+  return body;
+}
 
 export interface GeneratedFlashcard {
   question: string;
@@ -74,35 +99,70 @@ export async function checkDITroyHealth(): Promise<{
 export function parseJsonResponse(reply: string): any {
   if (!reply) return null;
 
-  // 1. Try direct JSON parse
-  try {
-    return JSON.parse(reply);
-  } catch {}
+  const tryParse = (value: string): any => {
+    try {
+      const parsed = JSON.parse(value.trim());
+      return typeof parsed === "string" ? tryParse(parsed) : parsed;
+    } catch {
+      return null;
+    }
+  };
+
+  // 1. Try direct JSON parse, including a JSON string containing JSON.
+  const direct = tryParse(reply);
+  if (direct !== null) return direct;
 
   // 2. Try extracting from ```json ... ``` or ``` ... ```
   const codeBlockMatch = reply.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
   if (codeBlockMatch && codeBlockMatch[1]) {
-    try {
-      return JSON.parse(codeBlockMatch[1].trim());
-    } catch {}
+    const parsedCodeBlock = tryParse(codeBlockMatch[1]);
+    if (parsedCodeBlock !== null) return parsedCodeBlock;
   }
 
-  // 3. Try finding the outer JSON array [ ... ]
-  const arrayMatch = reply.match(/\[\s*\{[\s\S]*\}\s*\]/);
-  if (arrayMatch) {
-    try {
-      return JSON.parse(arrayMatch[0]);
-    } catch {}
+  // 3. Scan balanced arrays/objects so braces inside answers do not break extraction.
+  const recoveredCards: any[] = [];
+  for (let start = 0; start < reply.length; start++) {
+    if (reply[start] !== "[" && reply[start] !== "{") continue;
+
+    const opening = reply[start];
+    const closing = opening === "[" ? "]" : "}";
+    let depth = 0;
+    let inString = false;
+    let escaped = false;
+
+    for (let end = start; end < reply.length; end++) {
+      const character = reply[end];
+      if (inString) {
+        if (escaped) escaped = false;
+        else if (character === "\\") escaped = true;
+        else if (character === '"') inString = false;
+        continue;
+      }
+      if (character === '"') {
+        inString = true;
+      } else if (character === opening) {
+        depth++;
+      } else if (character === closing) {
+        depth--;
+        if (depth === 0) {
+          const parsedCandidate = tryParse(reply.slice(start, end + 1));
+          if (
+            opening === "{" &&
+            parsedCandidate &&
+            (parsedCandidate.question || parsedCandidate.q) &&
+            (parsedCandidate.answer || parsedCandidate.a)
+          ) {
+            recoveredCards.push(parsedCandidate);
+          } else if (parsedCandidate !== null) {
+            return parsedCandidate;
+          }
+          break;
+        }
+      }
+    }
   }
 
-  // 4. Try finding the outer JSON object { ... }
-  const objMatch = reply.match(/\{[\s\S]*\}/);
-  if (objMatch) {
-    try {
-      return JSON.parse(objMatch[0]);
-    } catch {}
-  }
-
+  if (recoveredCards.length > 0) return recoveredCards;
   return null;
 }
 
@@ -121,10 +181,78 @@ export async function extractFlashcardsWithAI(
     topic?: string;
     cardCount?: number;
     tags?: string[];
-  }
+    excludeQuestions?: string[];
+    batchIndex?: number;
+    totalBatches?: number;
+  },
 ): Promise<FlashcardGenerationResult> {
   const cardCount = options?.cardCount || 5;
   const topic = options?.topic ? `Topic / Subject: "${options.topic}"\n` : "";
+  const excludedQuestions = (
+    options?.excludeQuestions?.filter(Boolean) || []
+  ).slice(-30);
+
+  // Large JSON responses can be truncated by the model. Generate bounded batches and merge them.
+  const maxCardsPerRequest = 15;
+  if (cardCount > maxCardsPerRequest) {
+    const cardsByQuestion = new Map<string, GeneratedFlashcard>();
+    const rawReplies: string[] = [];
+    let lastError: string | undefined;
+    let attempts = 0;
+    const maxAttempts = Math.ceil(cardCount / maxCardsPerRequest) + 3;
+
+    while (cardsByQuestion.size < cardCount && attempts < maxAttempts) {
+      attempts++;
+      const batchCount = Math.min(
+        maxCardsPerRequest,
+        cardCount - cardsByQuestion.size,
+      );
+      const batchResult = await extractFlashcardsWithAI(rawContent, mode, {
+        ...options,
+        cardCount: batchCount,
+        excludeQuestions: [
+          ...excludedQuestions,
+          ...Array.from(cardsByQuestion.values()).map((card) => card.question),
+        ],
+        batchIndex: attempts,
+        totalBatches: Math.ceil(cardCount / maxCardsPerRequest),
+      });
+
+      if (batchResult.rawReply) rawReplies.push(batchResult.rawReply);
+      if (batchResult.error) lastError = batchResult.error;
+
+      for (const card of batchResult.cards) {
+        const key = card.question.trim().toLowerCase();
+        if (key && !cardsByQuestion.has(key)) cardsByQuestion.set(key, card);
+      }
+    }
+
+    const cards = Array.from(cardsByQuestion.values()).slice(0, cardCount);
+    return {
+      cards,
+      rawReply: rawReplies.join("\n\n"),
+      isAiGenerated: cards.length > 0,
+      ...(cards.length === 0 && lastError ? { error: lastError } : {}),
+    };
+  }
+
+  const continuationInstruction =
+    excludedQuestions.length > 0
+      ? `This is a continuation request. Generate a fresh batch using the same input, and do not repeat or lightly rephrase any of these questions. Explore different concepts, details, commands, comparisons, or examples instead:\n${excludedQuestions.map((question) => `- ${question}`).join("\n")}\n`
+      : "";
+  const batchInstruction = options?.batchIndex
+    ? `This is batch ${options.batchIndex} of ${options.totalBatches || "multiple"}. Return a complete batch of new cards; do not stop early just because earlier batches exist.\n`
+    : "";
+  const batchFocuses = [
+    "foundations, definitions, and core concepts",
+    "configuration steps, commands, and practical procedures",
+    "comparisons, architecture, and how components work together",
+    "troubleshooting, edge cases, security, and best practices",
+    "advanced details, performance, maintenance, and real-world scenarios",
+  ];
+  const batchFocusInstruction = options?.batchIndex
+    ? `For this batch, focus especially on ${batchFocuses[(options.batchIndex - 1) % batchFocuses.length]}.\n`
+    : "";
 
   let taskInstruction = "";
   if (mode === "detect-qa") {
@@ -138,6 +266,9 @@ Extract the most important core definitions, key principles, comparison points, 
 
   const prompt = `You are DITroy, an expert educational AI flashcard creator.
 ${taskInstruction}
+${continuationInstruction}
+${batchInstruction}
+${batchFocusInstruction}
 
 ${topic}Input Content:
 """
@@ -152,18 +283,11 @@ CRITICAL INSTRUCTIONS:
   - "difficulty": integer from 1 (easy) to 5 (hard) (number)
   - "tags": array of 1 to 3 relevant topic keywords (string[])
 
-Example JSON output:
-[
-  {
-    "question": "What is the primary function of mitochondria?",
-    "answer": "To generate most of the chemical energy (ATP) for cellular processes.",
-    "difficulty": 2,
-    "tags": ["Biology", "Cell"]
-  }
-]`;
+- Do not copy content from these instructions; every card must be based only on the supplied input content.
+- Return exactly the requested number of cards when the input contains enough material.`;
 
   try {
-    const response = await ditroyClient.chat({
+    const response = await chatWithDitroy({
       message: prompt,
       conversation_id: "smart-detect-" + Date.now(),
     });
@@ -172,7 +296,10 @@ Example JSON output:
 
     if (Array.isArray(parsed) && parsed.length > 0) {
       const validCards: GeneratedFlashcard[] = parsed
-        .filter((item) => item && (item.question || item.q) && (item.answer || item.a))
+        .filter(
+          (item) =>
+            item && (item.question || item.q) && (item.answer || item.a),
+        )
         .map((item) => ({
           question: String(item.question || item.q).trim(),
           answer: String(item.answer || item.a).trim(),
@@ -180,7 +307,9 @@ Example JSON output:
             ? item.tags.map((t: any) => String(t).trim()).filter(Boolean)
             : options?.tags || ["AI-Detected"],
           difficulty:
-            typeof item.difficulty === "number" && item.difficulty >= 1 && item.difficulty <= 5
+            typeof item.difficulty === "number" &&
+            item.difficulty >= 1 &&
+            item.difficulty <= 5
               ? Math.round(item.difficulty)
               : 3,
         }));
@@ -192,9 +321,23 @@ Example JSON output:
           isAiGenerated: true,
         };
       }
-    } else if (parsed && typeof parsed === "object" && Array.isArray(parsed.cards)) {
-      const validCards: GeneratedFlashcard[] = parsed.cards
-        .filter((item: any) => item && (item.question || item.q) && (item.answer || item.a))
+    } else if (parsed && typeof parsed === "object") {
+      const cardCollection =
+        parsed.cards || parsed.flashcards || parsed.data || parsed.results;
+      if (!Array.isArray(cardCollection)) {
+        return {
+          cards: [],
+          rawReply: response.reply,
+          isAiGenerated: false,
+          error: "Could not extract flashcard pairs from AI reply",
+        };
+      }
+
+      const validCards: GeneratedFlashcard[] = cardCollection
+        .filter(
+          (item: any) =>
+            item && (item.question || item.q) && (item.answer || item.a),
+        )
         .map((item: any) => ({
           question: String(item.question || item.q).trim(),
           answer: String(item.answer || item.a).trim(),
@@ -202,7 +345,9 @@ Example JSON output:
             ? item.tags.map((t: any) => String(t).trim()).filter(Boolean)
             : options?.tags || ["AI-Detected"],
           difficulty:
-            typeof item.difficulty === "number" && item.difficulty >= 1 && item.difficulty <= 5
+            typeof item.difficulty === "number" &&
+            item.difficulty >= 1 &&
+            item.difficulty <= 5
               ? Math.round(item.difficulty)
               : 3,
         }));
@@ -217,7 +362,10 @@ Example JSON output:
     }
 
     // Fallback heuristic parsing of raw reply if model didn't return strict JSON
-    const lines = response.reply.split("\n").map((l) => l.trim()).filter(Boolean);
+    const lines = response.reply
+      .split("\n")
+      .map((l) => l.trim())
+      .filter(Boolean);
     const fallbackCards: GeneratedFlashcard[] = [];
     let currentQ = "";
 
@@ -271,7 +419,8 @@ export async function generateFlashcardsFromNotes(
     topic?: string;
     cardCount?: number;
     tags?: string[];
-  }
+    excludeQuestions?: string[];
+  },
 ): Promise<FlashcardGenerationResult> {
   return extractFlashcardsWithAI(rawContent, "from-context", options);
 }
@@ -287,31 +436,84 @@ export const generateFlashcardsWithAI = generateFlashcardsFromNotes;
  */
 export function generateHeuristicDistractors(
   card: { question: string; answer: string; tags?: string[] },
-  poolCards: Array<{ id?: string; answer: string; tags?: string[]; difficulty?: number }> = [],
-  difficultyLevel: number = 1
+  poolCards: Array<{
+    id?: string;
+    answer: string;
+    tags?: string[];
+    difficulty?: number;
+  }> = [],
+  difficultyLevel: number = 1,
 ): string[] {
   const ans = card.answer.trim();
   const q = card.question.trim().toLowerCase();
 
   // 1. BIOS Keys & Keyboard shortcuts (e.g., "F5", "F2", "Del", "Esc", "F12")
-  if (/^F([1-9]|1[0-2])$/i.test(ans) || /^(Del|Delete|Esc|Escape|Enter|Tab|F2|F12|F8|F10)$/i.test(ans)) {
-    const biosKeys = ["F2", "Del", "F12", "F10", "F1", "F8", "Esc", "Tab", "F11", "Enter", "Pause"];
-    const filtered = biosKeys.filter((k) => k.toLowerCase() !== ans.toLowerCase());
+  if (
+    /^F([1-9]|1[0-2])$/i.test(ans) ||
+    /^(Del|Delete|Esc|Escape|Enter|Tab|F2|F12|F8|F10)$/i.test(ans)
+  ) {
+    const biosKeys = [
+      "F2",
+      "Del",
+      "F12",
+      "F10",
+      "F1",
+      "F8",
+      "Esc",
+      "Tab",
+      "F11",
+      "Enter",
+      "Pause",
+    ];
+    const filtered = biosKeys.filter(
+      (k) => k.toLowerCase() !== ans.toLowerCase(),
+    );
     const shuffled = [...filtered].sort(() => Math.random() - 0.5);
     return shuffled.slice(0, 3);
   }
 
   // 2. Common Networking Ports (e.g., "80", "443", "22", "21", "53", "3306", "8080")
-  if (/^(80|443|22|21|23|25|53|110|143|3306|5432|8080|3000|27017|6379)$/.test(ans)) {
-    const ports = ["80", "443", "22", "21", "25", "53", "3306", "5432", "8080", "110", "143", "23"];
+  if (
+    /^(80|443|22|21|23|25|53|110|143|3306|5432|8080|3000|27017|6379)$/.test(ans)
+  ) {
+    const ports = [
+      "80",
+      "443",
+      "22",
+      "21",
+      "25",
+      "53",
+      "3306",
+      "5432",
+      "8080",
+      "110",
+      "143",
+      "23",
+    ];
     const filtered = ports.filter((p) => p !== ans);
     const shuffled = [...filtered].sort(() => Math.random() - 0.5);
     return shuffled.slice(0, 3);
   }
 
   // 3. HTTP Status Codes (e.g., "404", "200", "500", "401", "403")
-  if (/^(1\d\d|2\d\d|3\d\d|4\d\d|5\d\d)$/.test(ans) || /(status code|http)/i.test(q)) {
-    const httpCodes = ["200", "201", "301", "302", "400", "401", "403", "404", "409", "500", "502", "503"];
+  if (
+    /^(1\d\d|2\d\d|3\d\d|4\d\d|5\d\d)$/.test(ans) ||
+    /(status code|http)/i.test(q)
+  ) {
+    const httpCodes = [
+      "200",
+      "201",
+      "301",
+      "302",
+      "400",
+      "401",
+      "403",
+      "404",
+      "409",
+      "500",
+      "502",
+      "503",
+    ];
     const filtered = httpCodes.filter((c) => c !== ans && !ans.includes(c));
     const shuffled = [...filtered].sort(() => Math.random() - 0.5);
     return shuffled.slice(0, 3);
@@ -325,10 +527,14 @@ export function generateHeuristicDistractors(
       difficultyLevel >= 3
         ? [-1, 1, 2, -2]
         : difficultyLevel === 2
-        ? [-5, 5, 2, -2, 10, -10]
-        : [-10, 10, 20, 50, -20, 100];
+          ? [-5, 5, 2, -2, 10, -10]
+          : [-10, 10, 20, 50, -20, 100];
     const generated = deltas
-      .map((d) => (Number.isInteger(val) ? String(Math.round(val + d)) : (val + d).toFixed(2)))
+      .map((d) =>
+        Number.isInteger(val)
+          ? String(Math.round(val + d))
+          : (val + d).toFixed(2),
+      )
       .filter((n) => n !== ans && parseFloat(n) >= 0);
     if (generated.length >= 3) {
       return [...new Set(generated)].slice(0, 3);
@@ -338,26 +544,31 @@ export function generateHeuristicDistractors(
   // 5. 4-Digit Years
   if (/^\d{4}$/.test(ans)) {
     const year = parseInt(ans, 10);
-    const diffs = difficultyLevel >= 3 ? [-1, 1, 2, -2] : [-4, 4, 10, -10, 2, -2];
+    const diffs =
+      difficultyLevel >= 3 ? [-1, 1, 2, -2] : [-4, 4, 10, -10, 2, -2];
     return diffs.map((d) => String(year + d)).slice(0, 3);
   }
 
   // 6. Boolean / Binary terms
   if (/^(true|false|yes|no)$/i.test(ans)) {
     const isTrue = /^(true|yes)$/i.test(ans);
-    return isTrue ? ["False", "Null", "Undefined"] : ["True", "Null", "Undefined"];
+    return isTrue
+      ? ["False", "Null", "Undefined"]
+      : ["True", "Null", "Undefined"];
   }
 
   // 7. Semantic matching from pool cards
   const candidates = poolCards.filter(
-    (c) => c.answer.trim().toLowerCase() !== ans.toLowerCase()
+    (c) => c.answer.trim().toLowerCase() !== ans.toLowerCase(),
   );
 
   const scored = candidates.map((cand) => {
     let score = Math.random();
 
     // Shared tags boost
-    const sharedTags = (cand.tags || []).filter((t) => (card.tags || []).includes(t)).length;
+    const sharedTags = (cand.tags || []).filter((t) =>
+      (card.tags || []).includes(t),
+    ).length;
     score += sharedTags * 5;
 
     // Difficulty similarity boost
@@ -376,7 +587,10 @@ export function generateHeuristicDistractors(
 
   const distractorAnswers: string[] = [];
   for (const s of scored) {
-    if (!distractorAnswers.includes(s.answer) && s.answer.toLowerCase() !== ans.toLowerCase()) {
+    if (
+      !distractorAnswers.includes(s.answer) &&
+      s.answer.toLowerCase() !== ans.toLowerCase()
+    ) {
       distractorAnswers.push(s.answer);
     }
     if (distractorAnswers.length >= 3) break;
@@ -392,7 +606,10 @@ export function generateHeuristicDistractors(
   let fIdx = 0;
   while (distractorAnswers.length < 3) {
     const f = fallbackGeneric[fIdx % fallbackGeneric.length];
-    if (!distractorAnswers.includes(f) && f.toLowerCase() !== ans.toLowerCase()) {
+    if (
+      !distractorAnswers.includes(f) &&
+      f.toLowerCase() !== ans.toLowerCase()
+    ) {
       distractorAnswers.push(f);
     }
     fIdx++;
@@ -418,8 +635,13 @@ export async function generateDistractorsWithAI(
   options?: {
     difficultyLevel?: number;
     deckTitle?: string;
-    poolCards?: Array<{ id?: string; answer: string; tags?: string[]; difficulty?: number }>;
-  }
+    poolCards?: Array<{
+      id?: string;
+      answer: string;
+      tags?: string[];
+      difficulty?: number;
+    }>;
+  },
 ): Promise<string[]> {
   const level = options?.difficultyLevel || 1;
   const cacheKey = `rf_ai_dist_${card.id || card.question.slice(0, 30)}_${level}`;
@@ -441,8 +663,8 @@ export async function generateDistractorsWithAI(
     level >= 3
       ? "Level 3 (Advanced / Hard: Highly nuanced near-misses, tricky edge cases, commonly confused sibling concepts, highly plausible alternatives)"
       : level === 2
-      ? "Level 2 (Medium / Close Concepts: Same immediate sub-category, closely related sibling terms of the exact same type/format)"
-      : "Level 1 (Standard: Plausible options in the same general subject domain)";
+        ? "Level 2 (Medium / Close Concepts: Same immediate sub-category, closely related sibling terms of the exact same type/format)"
+        : "Level 1 (Standard: Plausible options in the same general subject domain)";
 
   const prompt = `You are DITroy, an expert educational assessment engine for Review Flash.
 Generate exactly 3 SMART, PLAUSIBLE, and LOGICALLY RELATIVE multiple-choice DISTRACTOR options (wrong answers) for this flashcard question.
@@ -471,7 +693,11 @@ CRITICAL RULES:
     if (Array.isArray(parsed) && parsed.length >= 3) {
       const cleaned = parsed
         .map((p) => String(p).trim())
-        .filter((p) => p.length > 0 && p.toLowerCase() !== card.answer.trim().toLowerCase())
+        .filter(
+          (p) =>
+            p.length > 0 &&
+            p.toLowerCase() !== card.answer.trim().toLowerCase(),
+        )
         .slice(0, 3);
 
       if (cleaned.length === 3) {
@@ -498,16 +724,31 @@ export const generateSmartDistractorsWithAI = generateDistractorsWithAI;
  * Batch generates smart distractors for multiple cards in 1 efficient AI request.
  */
 export async function generateBatchDistractorsWithAI(
-  cards: Array<{ id: string; question: string; answer: string; tags?: string[] }>,
+  cards: Array<{
+    id: string;
+    question: string;
+    answer: string;
+    tags?: string[];
+  }>,
   options?: {
     difficultyLevel?: number;
     deckTitle?: string;
-    poolCards?: Array<{ id?: string; answer: string; tags?: string[]; difficulty?: number }>;
-  }
+    poolCards?: Array<{
+      id?: string;
+      answer: string;
+      tags?: string[];
+      difficulty?: number;
+    }>;
+  },
 ): Promise<Record<string, string[]>> {
   const level = options?.difficultyLevel || 1;
   const results: Record<string, string[]> = {};
-  const uncachedCards: Array<{ id: string; question: string; answer: string; tags?: string[] }> = [];
+  const uncachedCards: Array<{
+    id: string;
+    question: string;
+    answer: string;
+    tags?: string[];
+  }> = [];
 
   // Check cache for each card
   for (const card of cards) {
@@ -544,7 +785,10 @@ Target Difficulty: Level ${level} (Distractors MUST be of the EXACT SAME concept
 
 Cards to process:
 ${targetCards
-  .map((c, i) => `[Card ${i + 1}] ID: "${c.id}" | Question: "${c.question}" | Correct Answer: "${c.answer}"`)
+  .map(
+    (c, i) =>
+      `[Card ${i + 1}] ID: "${c.id}" | Question: "${c.question}" | Correct Answer: "${c.answer}"`,
+  )
   .join("\n")}
 
 CRITICAL: Return ONLY a valid JSON object mapping each Card ID to an array of 3 distractor strings:
@@ -565,14 +809,21 @@ CRITICAL: Return ONLY a valid JSON object mapping each Card ID to an array of 3 
         if (Array.isArray(item) && item.length >= 3) {
           const cleaned = item
             .map((s: any) => String(s).trim())
-            .filter((s) => s.length > 0 && s.toLowerCase() !== card.answer.trim().toLowerCase())
+            .filter(
+              (s) =>
+                s.length > 0 &&
+                s.toLowerCase() !== card.answer.trim().toLowerCase(),
+            )
             .slice(0, 3);
 
           if (cleaned.length === 3) {
             results[card.id] = cleaned;
             if (typeof window !== "undefined") {
               try {
-                localStorage.setItem(`rf_ai_dist_${card.id}_${level}`, JSON.stringify(cleaned));
+                localStorage.setItem(
+                  `rf_ai_dist_${card.id}_${level}`,
+                  JSON.stringify(cleaned),
+                );
               } catch {}
             }
           }
@@ -580,13 +831,20 @@ CRITICAL: Return ONLY a valid JSON object mapping each Card ID to an array of 3 
       }
     }
   } catch (err) {
-    console.warn("Batch DITroy AI distractor generation fallback triggered:", err);
+    console.warn(
+      "Batch DITroy AI distractor generation fallback triggered:",
+      err,
+    );
   }
 
   // Fill any missing cards with smart heuristic
   for (const card of cards) {
     if (!results[card.id] || results[card.id].length < 3) {
-      results[card.id] = generateHeuristicDistractors(card, options?.poolCards || [], level);
+      results[card.id] = generateHeuristicDistractors(
+        card,
+        options?.poolCards || [],
+        level,
+      );
     }
   }
 
@@ -594,7 +852,8 @@ CRITICAL: Return ONLY a valid JSON object mapping each Card ID to an array of 3 
 }
 
 // Backwards-compatible alias
-export const generateBatchSmartDistractorsWithAI = generateBatchDistractorsWithAI;
+export const generateBatchSmartDistractorsWithAI =
+  generateBatchDistractorsWithAI;
 
 import {
   fetchLearnedFacts,
@@ -604,12 +863,23 @@ import {
 } from "./aiMemoryService";
 
 export interface StudyTutorContext {
-  currentCard?: { question: string; answer: string; tags?: string[]; difficulty?: number };
+  currentCard?: {
+    question: string;
+    answer: string;
+    tags?: string[];
+    difficulty?: number;
+  };
   deckTitle?: string;
   mode?: "review" | "test" | "general";
   siteContext?: {
     page?: string;
-    stats?: { reviewed: number; correct: number; accuracy: number; streakDays?: number; totalTests?: number };
+    stats?: {
+      reviewed: number;
+      correct: number;
+      accuracy: number;
+      streakDays?: number;
+      totalTests?: number;
+    };
     decksSummary?: string[];
     quizSummary?: string;
     reviewProgress?: string;
@@ -624,7 +894,7 @@ export interface StudyTutorContext {
 export async function askStudyTutor(
   userQuery: string,
   context?: StudyTutorContext,
-  conversationId: string = "review-flash-tutor"
+  conversationId: string = "review-flash-tutor",
 ): Promise<string> {
   let contextPrompt = "";
 
@@ -656,7 +926,10 @@ ${sc.specificMention ? `- Targeted Focus (@mention): ${sc.specificMention}` : ""
   try {
     const facts = await fetchLearnedFacts();
     if (facts.length > 0) {
-      learnedFactsPrompt = `\n[Learned Facts & Student Profile from Firebase Memory:\n${facts.slice(-10).map((f) => `• ${f}`).join("\n")}\n]\n`;
+      learnedFactsPrompt = `\n[Learned Facts & Student Profile from Firebase Memory:\n${facts
+        .slice(-10)
+        .map((f) => `• ${f}`)
+        .join("\n")}\n]\n`;
     }
   } catch (err) {
     console.warn("Could not load learned facts from Firebase:", err);
@@ -700,18 +973,27 @@ Student Query: "${userQuery}"`;
 
   // 1. Save user query to Firebase Firestore
   const userMsgId = "user-" + Date.now();
-  void saveAiMessage(conversationId, {
-    id: userMsgId,
-    role: "user",
-    content: userQuery,
-    timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-    createdAt: Date.now(),
-    cardContext: context?.currentCard ? {
-      question: context.currentCard.question,
-      answer: context.currentCard.answer,
-      deckTitle: context.deckTitle,
-    } : undefined,
-  }, context?.deckTitle ? `${context.deckTitle} Tutor Session` : undefined);
+  void saveAiMessage(
+    conversationId,
+    {
+      id: userMsgId,
+      role: "user",
+      content: userQuery,
+      timestamp: new Date().toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit",
+      }),
+      createdAt: Date.now(),
+      cardContext: context?.currentCard
+        ? {
+            question: context.currentCard.question,
+            answer: context.currentCard.answer,
+            deckTitle: context.deckTitle,
+          }
+        : undefined,
+    },
+    context?.deckTitle ? `${context.deckTitle} Tutor Session` : undefined,
+  );
 
   try {
     const response = await ditroyClient.chat({
@@ -727,23 +1009,27 @@ Student Query: "${userQuery}"`;
       id: aiMsgId,
       role: "assistant",
       content: reply,
-      timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      timestamp: new Date().toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit",
+      }),
       createdAt: Date.now(),
     });
 
     // 3. If the user shared a fact or card concept, persist to long-term Firebase memory
     if (context?.currentCard?.question && context?.currentCard?.answer) {
       void saveLearnedFact(
-        `Concept: ${context.currentCard.question} = ${context.currentCard.answer}`
+        `Concept: ${context.currentCard.question} = ${context.currentCard.answer}`,
       );
     }
 
     return reply;
   } catch (error: any) {
-    throw new Error(error?.message || "Failed to get reply from DITroy AI Tutor.");
+    throw new Error(
+      error?.message || "Failed to get reply from DITroy AI Tutor.",
+    );
   }
 }
 
 export * from "./aiMemoryService";
 export * from "@131fgh/ditroy-client";
-
